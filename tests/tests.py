@@ -17,7 +17,7 @@ pipeline and should be run regularly as part of the development process.
 """
 
 import pandas as pd
-from src.components.data_etl import DataETL  # Note the correct import path
+from components.data_etl import DataETL  # Note the correct import path
 
 
 def test_etl_loads_data():
