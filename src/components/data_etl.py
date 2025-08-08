@@ -12,20 +12,26 @@ import os
 
 # import json
 from dataclasses import dataclass, field
-
-from zipfile import ZipFile
 from typing import ClassVar, Literal, Optional
+from zipfile import ZipFile
 
 import numpy as np
 import pandas as pd
-
 
 from src.components.logger_factory import ObservationLogger
 
 
 class DataProcessingError(Exception):
-    """Custom exception raised for errors during the ETL pipeline execution."""
-
+    """Custom exception for errors during the ETL pipeline execution.
+    
+    Attributes:
+        message (str): The error message.
+    """
+    # --- FIX for TRY003 ---
+    # Define standard messages inside the class
+    NO_DATA_TO_SAVE = "No data to save. Please run the pipeline first."
+    EXTRACTION_FAILED = "Failed to extract or read the dataset"
+    # --- END OF FIX ---
 
 @dataclass
 class DataETL:
@@ -126,7 +132,7 @@ class DataETL:
                 # cache_dir="./.cache",  # Use a dedicated cache directory
             )
             # The actual CSV file will be at this path after extraction.
-            ZipFile(zip_path, 'r').extractall(os.path.dirname(zip_path))
+            ZipFile(zip_path, "r").extractall(os.path.dirname(zip_path))
             # Keras extracts it next to the zip file in its cache.
             csv_path_in_cache = os.path.join(os.path.dirname(zip_path), "jena_climate_2009_2016.csv")
 
@@ -141,7 +147,10 @@ class DataETL:
             # --- END OF FIX ---x
 
         except Exception as e:
-            raise DataProcessingError(f"Failed to extract or read the dataset: {e}")
+            # --- FIX for B904 and TRY003 ---
+            # Raise the new exception from the original one to preserve the stack trace
+            raise DataProcessingError(f"{DataProcessingError.EXTRACTION_FAILED}: {e}") from e
+            # --- END OF FIX ---
 
         # df = pd.read_csv(self.RAW_CSV_PATH)
         df.columns = (
@@ -256,7 +265,9 @@ class DataETL:
     def save_output(self):
         """Saves the final processed DataFrame to a fixed path for DVC tracking."""
         if self.processed_df is None:
-            raise DataProcessingError("No data to save. Please run the pipeline first.")
+            # --- FIX for TRY003 ---
+            raise DataProcessingError(DataProcessingError.NO_DATA_TO_SAVE)
+            # --- END OF FIX ---
 
         self.logger.log(f"Saving transformed data to {self.TRANSFORMED_CSV_PATH}", tag=["io", "info"])
         self.processed_df.reset_index().to_csv(self.TRANSFORMED_CSV_PATH, index=False)
