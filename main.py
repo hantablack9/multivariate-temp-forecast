@@ -7,8 +7,10 @@ instantiates the class, and runs the pipeline.
 It allows users to specify parameters such as imputation method, resampling method,
 sampling rate, and whether to filter the data by year range.
 """
+
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import argparse
 

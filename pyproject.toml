@@ -128,4 +128,3 @@ skip_empty = true
 [tool.coverage.run]
 branch = true
 source = ["multivariate_ts_forecasting"]
-

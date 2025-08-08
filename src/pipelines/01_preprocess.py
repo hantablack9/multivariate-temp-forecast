@@ -194,4 +194,3 @@
 #                 min_, max_ = self.scale_params[col]["min"], self.scale_params[col]["max"]
 #                 df[col] = df[f"mm_{col}"] * (max_ - min_) + min_
 #         return df
-
