@@ -128,4 +128,9 @@ skip_empty = true
 
 [tool.coverage.run]
 branch = true
-source = ["multivariate_ts_forecasting"]
+source = ["src"]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
