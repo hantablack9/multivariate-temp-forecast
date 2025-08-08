@@ -34,4 +34,4 @@ def test_etl_loads_data():
     assert df is not None
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
-    assert 'timestamp' in df.columns
+    assert "timestamp" in df.columns
