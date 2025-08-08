@@ -1,0 +1,11 @@
+---
+extends: default
+
+ignore: |
+  .github/workflows/
+
+rules:
+  # FIX: Set the max line length to 120
+  line-length:
+    max: 297
+
