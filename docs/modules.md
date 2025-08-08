@@ -6,7 +6,7 @@ This page contains the auto-generated API documentation for the core modules in 
 
 This module handles all data extraction, transformation, and loading.
 
-::: src.components.data_etl.DataETL
+::: components.data_etl.DataETL
     handler: python
     options:
       show_root_heading: true
@@ -16,7 +16,7 @@ This module handles all data extraction, transformation, and loading.
 
 This module provides the logging utility for the project.
 
-::: src.components.logger_factory.ObservationLogger
+::: components.logger_factory.ObservationLogger
     handler: python
     options:
       show_root_heading: true
