@@ -1,0 +1,6 @@
+extends: default
+
+rules:
+  truthiness:
+    ignore: |
+      .github/workflows/
