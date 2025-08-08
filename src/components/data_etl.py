@@ -23,15 +23,17 @@ from src.components.logger_factory import ObservationLogger
 
 class DataProcessingError(Exception):
     """Custom exception for errors during the ETL pipeline execution.
-    
+
     Attributes:
         message (str): The error message.
     """
+
     # --- FIX for TRY003 ---
     # Define standard messages inside the class
     NO_DATA_TO_SAVE = "No data to save. Please run the pipeline first."
     EXTRACTION_FAILED = "Failed to extract or read the dataset"
     # --- END OF FIX ---
+
 
 @dataclass
 class DataETL:
@@ -149,7 +151,7 @@ class DataETL:
         except Exception as e:
             # --- FIX for B904 and TRY003 ---
             # Raise the new exception from the original one to preserve the stack trace
-            raise DataProcessingError(f"{DataProcessingError.EXTRACTION_FAILED}: {e}") from e
+            raise DataProcessingError(DataProcessingError.EXTRACTION_FAILED) from e
             # --- END OF FIX ---
 
         # df = pd.read_csv(self.RAW_CSV_PATH)
