@@ -75,6 +75,7 @@ testpaths = ["tests"]
 target-version = "py39"
 line-length = 120
 fix = true
+src = ["src"]
 
 [tool.ruff.lint]
 select = [
