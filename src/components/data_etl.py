@@ -19,9 +19,8 @@ from typing import ClassVar, Literal, Optional
 import numpy as np
 import pandas as pd
 
-# import keras
-# Assuming logger_factory.py is in a reachable path
-from src.logger_factory import ObservationLogger
+
+from src.components.logger_factory import ObservationLogger
 
 
 class DataProcessingError(Exception):
@@ -127,7 +126,7 @@ class DataETL:
                 # cache_dir="./.cache",  # Use a dedicated cache directory
             )
             # The actual CSV file will be at this path after extraction.
-            files = ZipFile(zip_path, 'r').extractall(os.path.dirname(zip_path))
+            ZipFile(zip_path, 'r').extractall(os.path.dirname(zip_path))
             # Keras extracts it next to the zip file in its cache.
             csv_path_in_cache = os.path.join(os.path.dirname(zip_path), "jena_climate_2009_2016.csv")
 

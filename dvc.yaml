@@ -1,0 +1,43 @@
+stages:
+  preprocess:
+    cmd: python src/pipeline/01_preprocess.py --config=params.yaml
+    deps:
+      - src/pipeline/01_preprocess.py
+      - src/components/data_etl.py
+    params:
+      - data_etl
+    outs:
+      - data/processed/preprocessed_data.csv
+
+  feature_engineer:
+    cmd: python src/pipeline/02_feature_engineering.py --config=params.yaml
+    deps:
+      - src/pipeline/02_feature_engineering.py
+      - data/processed/preprocessed_data.csv
+    params:
+      - feature_engineering
+    outs:
+      - data/processed/final_features.csv
+
+  train:
+    cmd: python src/pipeline/03_train_model.py --config=params.yaml
+    deps:
+      - src/pipeline/03_train_model.py
+      - data/processed/final_features.csv
+    params:
+      - train
+    outs:
+      - models/model.h5
+
+  evaluate:
+    cmd: python src/pipeline/04_evaluate_model.py --config=params.yaml
+    deps:
+      - src/pipeline/04_evaluate_model.py
+      - models/model.h5
+      - data/processed/final_features.csv
+    metrics:
+      - reports/metrics.json:
+          cache: false
+    plots:
+      - reports/feature_importance.png:
+          cache: false

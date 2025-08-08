@@ -1,0 +1,16 @@
+data_etl:
+  imputation_method: seasonal
+  resample_method: mean
+  sampling_rate: '1H'
+  filter_years: True
+  filter_range: [2014, 2017]
+
+feature_engineering:
+  scaler: standard_scaler
+  k_best_features: 10
+
+train:
+  model_type: LSTM
+  epochs: 20
+  batch_size: 64
+  learning_rate: 0.001

@@ -1,6 +1,50 @@
 docs/source
 
 # From https://raw.githubusercontent.com/github/gitignore/main/Python.gitignore
+requirements.txt
+.ruff_cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# DVC/MLflow/Tooling Caches
+.dvc/cache/
+.dvc/tmp/
+.ruff_cache/
+.mypy_cache/
+mlruns/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+.devcontainer/
+
+# Temporary Files
+temp_cache/
+*.swp
+*~
+
+# Data files tracked by DVC (DVC will add these automatically)
+# You can add them manually to be safe.
+/data/raw/
+/data/transformed/
+/models/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
