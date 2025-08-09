@@ -1,8 +1,11 @@
 {
   "cSpell.words": [
+    "arithmatex",
     "Autoencoders",
     "deptry",
+    "fontawesome",
     "Hanish",
+    "hantablack",
     "isort",
     "Keras",
     "LSTM",
@@ -19,6 +22,8 @@
     "pycodestyle",
     "pyflakes",
     "pygrep",
+    "pymdownx",
+    "pyproject",
     "pytest",
     "pyupgrade",
     "reindexing",

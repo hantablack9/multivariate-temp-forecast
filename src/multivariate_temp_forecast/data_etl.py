@@ -17,8 +17,9 @@ from zipfile import ZipFile
 
 import numpy as np
 import pandas as pd
-
+from tensorflow import keras
 from src.multivariate_temp_forecast.logger_factory import ObservationLogger
+
 
 class DataProcessingError(Exception):
     """Custom exception for errors during the ETL pipeline execution.
@@ -74,7 +75,8 @@ class DataETL:
     """
 
     # --- Configuration Parameters ---
-    imputation_method: Literal["seasonal", "forward_fill", "rolling_mean", "rolling_median"] = "seasonal"
+    imputation_method: Literal["seasonal", "forward_fill", "rolling_mean",
+                                "rolling_median"] = "seasonal"
     resample_method: Literal["mean", "median", "first", "last"] = "mean"
     sampling_rate: Literal["1H", "1D", "1Y"] = "1H"
     filter_years: bool = False
@@ -119,7 +121,6 @@ class DataETL:
         Raises:
             DataProcessingError: If the data cannot be downloaded, extracted, or read.
         """
-        import keras
 
         self.logger.log("Extracting and loading raw data.", tag=["extract", "load", "info"])
         try:

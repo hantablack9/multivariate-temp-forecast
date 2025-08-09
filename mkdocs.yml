@@ -5,7 +5,7 @@ site_description: This is a project to forecast temperature using a long-context
 site_author: Hanish Paturi
 edit_uri: edit/main/docs/
 repo_name: hantablack9/multivariate-ts-forecasting
-copyright: Maintained by <a href="https://hantablack9.com">hantablack9</a>.
+copyright: Maintained by <a href="https://github.org/hantablack9">hantablack9</a>.
 
 nav:
   - Home: index.md
