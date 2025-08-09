@@ -1,18 +1,18 @@
 stages:
   preprocess:
-    cmd: python src/pipeline/01_preprocess.py --config=params.yaml
+    cmd: python src/pipelines/01_preprocess.py --config=params.yaml
     deps:
-      - src/pipeline/01_preprocess.py
-      - src/components/data_etl.py
+      - src/pipelines/01_preprocess.py
+      - src/multivariate_temp_forecast/data_etl.py
     params:
       - data_etl
     outs:
       - data/processed/preprocessed_data.csv
 
   feature_engineer:
-    cmd: python src/pipeline/02_feature_engineering.py --config=params.yaml
+    cmd: python src/pipelines/02_feature_engineering.py --config=params.yaml
     deps:
-      - src/pipeline/02_feature_engineering.py
+      - src/pipelines/02_feature_engineering.py
       - data/processed/preprocessed_data.csv
     params:
       - feature_engineering
@@ -20,9 +20,9 @@ stages:
       - data/processed/final_features.csv
 
   train:
-    cmd: python src/pipeline/03_train_model.py --config=params.yaml
+    cmd: python src/pipelines/03_train_model.py --config=params.yaml
     deps:
-      - src/pipeline/03_train_model.py
+      - src/pipelines/03_train_model.py
       - data/processed/final_features.csv
     params:
       - train
@@ -30,9 +30,9 @@ stages:
       - models/model.h5
 
   evaluate:
-    cmd: python src/pipeline/04_evaluate_model.py --config=params.yaml
+    cmd: python src/pipelines/04_evaluate_model.py --config=params.yaml
     deps:
-      - src/pipeline/04_evaluate_model.py
+      - src/pipelines/04_evaluate_model.py
       - models/model.h5
       - data/processed/final_features.csv
     metrics:

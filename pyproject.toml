@@ -1,5 +1,5 @@
 [project]
-name = "multivariate-ts-forecasting"
+name = "multivariate-temp-forecast"
 version = "0.0.1"
 description = "This is a project to forecast temperature using a long-context deep-neural networks. This also contains analysis of different IoT sensor data which act as independent features for the target 'Temperature'. The project is built using FastAPI and Docker for deployment. The model is trained using LSTM and Autoencoders to handle the long-term dependencies in the time series data. The project also includes data preprocessing, feature engineering, and model evaluation steps.\n**Stack:** Python, Tensorflow, Keras, FastAPI, LSTM, Autoencoders, Docker"
 authors = [{ name = "Hanish Paturi", email = "hanishpaturi1320@gmail.com" }]
@@ -32,9 +32,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://hantablack9.github.io/multivariate-ts-forecasting/"
-Repository = "https://github.com/hantablack9/multivariate-ts-forecasting"
-Documentation = "https://hantablack9.github.io/multivariate-ts-forecasting/"
+Homepage = "https://hantablack9.github.io/multivariate-temp-forecast/"
+Repository = "https://github.com/hantablack9/multivariate-temp-forecast"
+Documentation = "https://hantablack9.github.io/multivariate-temp-forecast/"
 
 [dependency-groups]
 dev = [

@@ -1,4 +1,4 @@
-# Contributing to `multivariate-ts-forecasting`
+# Contributing to `multivariate-temp-forecast`
 
 Contributions are welcome, and they are greatly appreciated!
 Every little bit helps, and credit will always be given.
@@ -9,7 +9,7 @@ You can contribute in many ways:
 
 ## Report Bugs
 
-Report bugs at https://github.com/hantablack9/multivariate-ts-forecasting/issues
+Report bugs at https://github.com/hantablack9/multivariate-temp-forecast/issues
 
 If you are reporting a bug, please include:
 
@@ -29,11 +29,11 @@ Anything tagged with "enhancement" and "help wanted" is open to whoever wants to
 
 ## Write Documentation
 
-multivariate-ts-forecasting could always use more documentation, whether as part of the official docs, in docstrings, or even on the web in blog posts, articles, and such.
+multivariate-temp-forecast could always use more documentation, whether as part of the official docs, in docstrings, or even on the web in blog posts, articles, and such.
 
 ## Submit Feedback
 
-The best way to send feedback is to file an issue at https://github.com/hantablack9/multivariate-ts-forecasting/issues.
+The best way to send feedback is to file an issue at https://github.com/hantablack9/multivariate-temp-forecast/issues.
 
 If you are proposing a new feature:
 
@@ -44,22 +44,22 @@ If you are proposing a new feature:
 
 # Get Started!
 
-Ready to contribute? Here's how to set up `multivariate-ts-forecasting` for local development.
+Ready to contribute? Here's how to set up `multivariate-temp-forecast` for local development.
 Please note this documentation assumes you already have `uv` and `Git` installed and ready to go.
 
-1. Fork the `multivariate-ts-forecasting` repo on GitHub.
+1. Fork the `multivariate-temp-forecast` repo on GitHub.
 
 2. Clone your fork locally:
 
 ```bash
 cd <directory_in_which_repo_should_be_created>
-git clone git@github.com:YOUR_NAME/multivariate-ts-forecasting.git
+git clone git@github.com:YOUR_NAME/multivariate-temp-forecast.git
 ```
 
 3. Now we need to install the environment. Navigate into the directory
 
 ```bash
-cd multivariate-ts-forecasting
+cd multivariate-temp-forecast
 ```
 
 Then, install and activate the environment with:

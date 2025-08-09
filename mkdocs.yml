@@ -1,10 +1,10 @@
-site_name: multivariate-ts-forecasting
-repo_url: https://github.com/hantablack9/multivariate-ts-forecasting
-site_url: https://hantablack9.github.io/multivariate-ts-forecasting
+site_name: multivariate-temp-forecast
+repo_url: https://github.com/hantablack9/multivariate-temp-forecast
+site_url: https://hantablack9.github.io/multivariate-temp-forecast
 site_description: This is a project to forecast temperature using a long-context deep-neural networks. This also contains analysis of different IoT sensor data which act as independent features for the target 'Temperature'. **Stack:** Python, Tensorflow, Keras, FastAPI, LSTM, Autoencoders, Docker
 site_author: Hanish Paturi
 edit_uri: edit/main/docs/
-repo_name: hantablack9/multivariate-ts-forecasting
+repo_name: hantablack9/multivariate-temp-forecast
 copyright: Maintained by <a href="https://github.org/hantablack9">hantablack9</a>.
 
 nav:
@@ -43,9 +43,9 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/hantablack9/multivariate-ts-forecasting
+      link: https://github.com/hantablack9/multivariate-temp-forecast
     - icon: fontawesome/brands/python
-      link: https://pypi.org/project/multivariate-ts-forecasting
+      link: https://pypi.org/project/multivariate-temp-forecast
 
 markdown_extensions:
   - toc:

@@ -14,7 +14,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import argparse
 
-from src.components.data_etl import DataETL, DataProcessingError
+from src.multivariate_temp_forecast.data_etl import DataETL, DataProcessingError
 
 
 def main():

@@ -1,15 +1,15 @@
-# multivariate-ts-forecasting
+# multivariate-temp-forecast
 
-[![Release](https://img.shields.io/github/v/release/hantablack9/multivariate-ts-forecasting)](https://img.shields.io/github/v/release/hantablack9/multivariate-ts-forecasting)
-[![Build status](https://img.shields.io/github/actions/workflow/status/hantablack9/multivariate-ts-forecasting/main.yml?branch=main)](https://github.com/hantablack9/multivariate-ts-forecasting/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/hantablack9/multivariate-ts-forecasting/branch/main/graph/badge.svg)](https://codecov.io/gh/hantablack9/multivariate-ts-forecasting)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/hantablack9/multivariate-ts-forecasting)](https://img.shields.io/github/commit-activity/m/hantablack9/multivariate-ts-forecasting)
-[![License](https://img.shields.io/github/license/hantablack9/multivariate-ts-forecasting)](https://img.shields.io/github/license/hantablack9/multivariate-ts-forecasting)
+[![Release](https://img.shields.io/github/v/release/hantablack9/multivariate-temp-forecast)](https://img.shields.io/github/v/release/hantablack9/multivariate-temp-forecast)
+[![Build status](https://img.shields.io/github/actions/workflow/status/hantablack9/multivariate-temp-forecast/main.yml?branch=main)](https://github.com/hantablack9/multivariate-temp-forecast/actions/workflows/main.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/hantablack9/multivariate-temp-forecast/branch/main/graph/badge.svg)](https://codecov.io/gh/hantablack9/multivariate-temp-forecast)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/hantablack9/multivariate-temp-forecast)](https://img.shields.io/github/commit-activity/m/hantablack9/multivariate-temp-forecast)
+[![License](https://img.shields.io/github/license/hantablack9/multivariate-temp-forecast)](https://img.shields.io/github/license/hantablack9/multivariate-temp-forecast)
 
 This is a project to forecast temperature using a long-context deep-neural networks. This also contains analysis of different IoT sensor data which act as independent features for the target 'Temperature'. **Stack:** Python, Tensorflow, Keras, FastAPI, LSTM, Autoencoders, Docker
 
-- **Github repository**: <https://github.com/hantablack9/multivariate-ts-forecasting/>
-- **Documentation** <https://hantablack9.github.io/multivariate-ts-forecasting/>
+- **Github repository**: <https://github.com/hantablack9/multivariate-temp-forecast/>
+- **Documentation** <https://hantablack9.github.io/multivariate-temp-forecast/>
 
 ## Getting started with your project
 
@@ -21,7 +21,7 @@ First, create a repository on GitHub with the same name as this project, and the
 git init -b main
 git add .
 git commit -m "init commit"
-git remote add origin git@github.com:hantablack9/multivariate-ts-forecasting.git
+git remote add origin git@github.com:hantablack9/multivariate-temp-forecast.git
 git push -u origin main
 ```
 
