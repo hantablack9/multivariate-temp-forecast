@@ -8,6 +8,7 @@
     "hantablack",
     "isort",
     "Keras",
+    "loguru",
     "LSTM",
     "matplotlib",
     "mccabe",
@@ -25,6 +26,7 @@
     "pymdownx",
     "pyproject",
     "pytest",
+    "pythonpath",
     "pyupgrade",
     "reindexing",
     "scikit",
@@ -33,5 +35,8 @@
     "testpaths",
     "tryceratops"
   ],
-  "taipyStudio.gUI.elementsFilePaths": []
+  "taipyStudio.gUI.elementsFilePaths": [],
+  "python.linting.pylintArgs": [
+        "--max-line-length=120",
+    ],
 }

@@ -1,3 +1,23 @@
+# In src/pipelines/01_preprocess.py
+
+import yaml
+
+from src.multivariate_temp_forecast.data_etl import DataETL
+
+# 1. Load the configuration from the YAML file
+with open("params.yaml", encoding="utf-8") as f:
+    params = yaml.safe_load(f)
+
+# 2. Instantiate your class, passing the loaded parameters.
+# The ** operator unpacks the dictionary, overriding the defaults in your class.
+etl_processor = DataETL(**params["data_etl"])
+
+# 3. Run the pipeline
+etl_processor.run(impute=True, resample=True, save=True)
+
+print("Preprocessing stage complete.")
+
+
 # from dataclasses import dataclass
 # from typing import Literal, Optional
 # import pandas as pd

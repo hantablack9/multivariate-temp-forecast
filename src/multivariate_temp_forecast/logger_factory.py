@@ -1,59 +1,27 @@
-"""
-# Observation Logger Factory
-# src/components/logger_factory.py
-
-This module provides a flexible logging system for tracking observations with optional metadata.
-It supports various formats including plain text, SQLite, CSV, JSON, and Markdown.
-It is designed to be extensible and can be integrated into larger data processing pipelines.
-The logger can be used to log events, errors, and general notes in a structured manner.
-It also supports grouping observations by date and filtering by tags, sections, and time ranges.
-It is suitable for data science projects, especially those involving time series analysis and
-    machine learning.
-The logger can be initialized with a log file and an optional SQLite database for persistence.
-# It provides methods to reset logs, update tags, and log observations with various metadata.
-"""
+# src/multivariate_temp_forecast/logger_factory.py
 
 import csv
 import json
-import os
-import re
 import sqlite3
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import ClassVar, Optional, Union
 
+from loguru import logger
+
 
 @dataclass
 class Observation:
-    """
-    Represents a single logged observation with optional metadata.
-
-    Attributes:
-        text (str): The content of the observation.
-        timestamp (datetime): The time the observation was logged.
-        section (Optional[str]): A category or logical grouping.
-        tags (Optional[List[str]]): Tags for filtering and categorization.
-        level (Optional[str]): Optional priority indicator (e.g., high, medium, low).
-    """
+    """Represents a single structured log entry for database and export use."""
 
     text: str
     timestamp: datetime
     section: Optional[str] = None
     tags: Optional[list[str]] = None
     level: Optional[str] = None
-
-    def format(self) -> str:
-        """Return a formatted string representation suitable for writing to file."""
-        head = f"[{self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}]"
-        if self.section:
-            head += f" [Section: {self.section}]"
-        if self.tags:
-            head += f" [Tags: {', '.join(self.tags)}]"
-        if self.level:
-            head += f" [Level: {self.level}]"
-        return f"{head}\n{self.text.strip()}\n{'-' * 80}\n"
 
     def to_dict(self) -> dict:
         """Return a dictionary representation of the observation."""
@@ -68,63 +36,79 @@ class Observation:
 
 class ObservationLogger:
     """
-    Logger for tracking observations, supporting filtering, persistence, and export.
+    A powerful hybrid logger combining real-time console/file logging via Loguru
+    with structured data persistence in SQLite for advanced analysis and exporting.
 
-    Supports logging to plain text, SQLite, CSV, JSON, and Markdown formats.
+    This class provides a complete logging solution:
+    - Real-time, colored console output.
+    - Persistent, rotating text log files.
+    - A queryable SQLite database for every log entry.
+    - Methods for advanced filtering, grouping, and exporting of logs.
+
+    Attributes:
+        db_path (Optional[str]): Path to the SQLite database for structured logs.
+        tags (dict): A dictionary of registered tags for validation.
     """
 
     DEFAULT_TAGS: ClassVar[dict[str, str]] = {
         "meta": "Meta level tags",
-        "data_elt": "Extract-Load-Transform functionality related logs",
-        "ml": "Machine Learning related logs",
-        "eda": "Exploratory Data Analysis notes",
-        "bug": "Bug or issue encountered",
-        "note": "General notes",
-        "test": "Test run logs",
-        "review": "Code/model/data reviews",
-        "todo": "Tasks to be completed",
-        "data": "Dataset specific notes",
-        "config": "Configuration related",
-        "init": "Initialization logs",
-        "infra": "Infrastructure changes",
-        "debug": "Debugging notes",
-        "info": "Informational messages",
-        "warning": "Warnings or potential issues",
+        "etl": "Main ETL Process Control",
+        "extract": "Data Extraction Step",
+        "load": "Data Loading & Cleaning Step",
+        "impute": "Imputation Step",
+        "filter": "Filtering Step",
+        "resample": "Resampling Step",
+        "error": "Error Messages",
+        "validation": "Input validation",
+        "io": "File Input/Output",
     }
-
-    LEVELS: ClassVar[list[str]] = [
-        "debug",
-        "info",
-        "warning",
-    ]
 
     def __init__(
         self,
-        log_file: str = "observations.txt",
-        db_path: Optional[str] = None,
-        tag_dict: Optional[dict[str, str]] = None,
+        log_file: str = "pipeline.log",
+        db_path: Optional[str] = "observations.db",
+        console_level: str = "INFO",
+        file_level: str = "DEBUG",
     ):
         """
-        Initialize the logger.
+        Initializes the logger with console, file, and optional database sinks.
 
         Args:
-            log_file (str): Path to the plain text log file.
-            db_path (Optional[str]): Path to SQLite database for persistence.
-            tag_dict (Optional[Dict[str, str]]): Optional user-defined tags.
+            log_file (str): Path for the persistent text log file.
+            db_path (Optional[str]): Path for the SQLite database. If None, DB features are disabled.
+            console_level (str): Minimum level to show on the console.
+            file_level (str): Minimum level to save to the text file.
         """
-        self.log_file = Path(log_file)
-        self.log_file.touch(exist_ok=True)
+        # --- Loguru Configuration ---
+        logger.remove()  # Start with a clean configuration
+        logger.add(
+            sys.stderr,
+            level=console_level.upper(),
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+        )
+        logger.add(
+            log_file,
+            level=file_level.upper(),
+            rotation="10 MB",
+            compression="zip",
+        )
+
+        # --- Custom Functionality ---
         self.db_path = db_path
         self.tags = self.DEFAULT_TAGS.copy()
-        if tag_dict:
-            self.tags.update({k.lower(): v for k, v in tag_dict.items()})
-        if db_path:
+        if self.db_path:
             self._init_db()
 
     def _init_db(self):
-        """Initialize the SQLite database schema."""
+        """Initialize the SQLite database schema.
+
+        Creates the 'observations' table if it doesn't exist.
+        """
+        if not self.db_path:
+            return
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS observations (
                     timestamp TEXT NOT NULL,
                     section TEXT,
@@ -132,234 +116,207 @@ class ObservationLogger:
                     text TEXT,
                     level TEXT
                 )
-            """)
-
-    def reset_logs(self, reset_file: bool = True, reset_db: bool = True) -> None:
-        """
-        Clears all current logs from file and/or database.
-
-        Parameters:
-            reset_file (bool): If True, truncates the log file.
-            reset_db (bool): If True, drops and recreates the observations table in the database.
-        """
-        if reset_file and os.path.exists(self.log_file):
-            open(self.log_file, "w", encoding="utf-8").close()
-
-        if reset_db and self.db_path:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("DROP TABLE IF EXISTS observations")
-                conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS observations (
-                        timestamp TEXT NOT NULL,
-                        section TEXT,
-                        tags TEXT,
-                        text TEXT,
-                        level TEXT
-                    )
-                    """
-                )
+                """
+            )
 
     def update_tags(self, new_tags: dict[str, str]):
-        """Update the tag dictionary with new user-defined tags."""
+        """Update the tag dictionary with new user-defined tags.
+
+        Args:
+            new_tags (dict[str, str]): A dictionary of new tags to add.
+        """
         self.tags.update({k.lower(): v for k, v in new_tags.items()})
 
     def log(
         self,
         text: str,
+        level: str = "info",
         section: Optional[str] = None,
         tag: Optional[Union[str, list[str]]] = None,
-        level: Optional[str] = None,
     ):
         """
-        Add a new observation log entry.
+        Logs a message using Loguru and saves a structured record to the database.
 
         Args:
-            text (str): Observation content.
-            section (Optional[str]): Logical section/category.
-            tag (Optional[Union[str, List[str]]]): One or more tags.
-            level (Optional[str]): Priority label.
-
-        Raises:
-            ValueError: If any tag is not registered.
+            text (str): The log message to be logged.
+            level (str): The level of the log message. Default is "info".
+            section (Optional[str]): The section of the log message. Default is None.
+            tag (Optional[Union[str, list[str]]]): The tag(s) associated with the log message. Default is None.
         """
+        # 1. Validate tags
         tag_list = [tag] if isinstance(tag, str) else (tag or [])
-        tag_list = [t.strip().lower() for t in tag_list]
-
         invalid_tags = [t for t in tag_list if t not in self.tags]
         if invalid_tags:
-            print(f"Invalid tags: {invalid_tags}. Use 'update_tags()' to register them.")
-            raise ValueError
+            raise ValueError(f"Invalid tags: {invalid_tags}. Use 'update_tags()' to register them.")
 
-        obs = Observation(
-            text=text.strip(),
-            level=level.strip().lower() if level in self.LEVELS else None,
-            timestamp=datetime.now(),
-            section=section.strip() if section else None,
-            tags=tag_list,
-        )
+        # 2. Use Loguru for real-time logging
+        log_message = f"[{', '.join(tag_list).upper()}] {text}" if tag_list else text
+        logger.log(level.upper(), log_message)
 
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(obs.format())
-
+        # 3. Save to SQLite database if configured
         if self.db_path:
+            obs = Observation(
+                text=text.strip(),
+                level=level.strip().lower(),
+                timestamp=datetime.now(),
+                section=section.strip() if section else None,
+                tags=tag_list,
+            )
             with sqlite3.connect(self.db_path) as conn:
+                tags_str = ",".join(obs.tags) if obs.tags is not None else ""
                 conn.execute(
-                    "INSERT INTO observations (timestamp, section, tags, text,level) VALUES (?, ?, ?, ?, ?)",
-                    (obs.timestamp.isoformat(), obs.section, ",".join(obs.tags), obs.text, obs.level),
+                    "INSERT INTO observations (timestamp, section, tags, text, level) VALUES (?, ?, ?, ?, ?)",
+                    (obs.timestamp.isoformat(), obs.section, tags_str, obs.text, obs.level),
                 )
 
-    def load_logs(self, level: Optional[str] = None) -> list[Observation]:
-        """
-        Load all logs from the text file.
+    def load_logs_from_db(self) -> list[Observation]:
+        """Loads all structured log observations from the SQLite database.
 
         Returns:
-            List[Observation]: Parsed log entries.
+            List[Observation]: A list of Observation objects representing the loaded logs.
         """
-        observations = []
-        with open(self.log_file, encoding="utf-8") as f:
-            content = f.read().strip()
-            entries = content.split("-" * 80)
+        if not self.db_path:
+            logger.warning("Database path not configured. Cannot load logs.")
+            return []
 
-        for entry in entries:
-            if not entry.strip():
-                continue
-
-            lines = entry.strip().split("\n")
-            header = lines[0]
-            text = "\n".join(lines[1:]).strip()
-
-            ts = re.search(r"\[\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*\]", header, flags=re.IGNORECASE)
-            section = re.search(r"\[\s*section\s*:\s*(.*?)\s*\]", header, flags=re.IGNORECASE)
-            tags = re.search(r"\[\s*tags\s*:\s*(.*?)\s*\]", header, flags=re.IGNORECASE)
-            level = re.search(r"\[\s*priority\s*:\s*(.*?)\s*\]", header, flags=re.IGNORECASE)
-
-            if ts:
-                timestamp = datetime.strptime(ts.group(1), "%Y-%m-%d %H:%M:%S")
-                observations.append(
-                    Observation(
-                        text=text,
-                        timestamp=timestamp,
-                        section=section.group(1).strip() if section else None,
-                        tags=[t.strip().lower() for t in tags.group(1).split(",")] if tags else [],
-                        level=level.group(1).strip().lower() if level else None,
-                    )
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("SELECT timestamp, section, tags, text, level FROM observations ORDER BY timestamp")
+            return [
+                Observation(
+                    timestamp=datetime.fromisoformat(row[0]),
+                    section=row[1],
+                    tags=row[2].split(",") if row[2] else [],
+                    text=row[3],
+                    level=row[4],
                 )
+                for row in cursor.fetchall()
+            ]
 
-        return observations
+    def reset_db(self):
+        """Drops and recreates the observations table in the database.
 
-    def export_to_markdown(self, path: str = "observations.md"):
-        """Export log entries to a markdown file."""
-        content = self.log_file.read_text(encoding="utf-8")
-        Path(path).write_text(f"# Observations Log\n\n```text\n{content}\n```", encoding="utf-8")
+        Use this method to reset the database if needed.
+        """
+        if not self.db_path:
+            logger.warning("Database path not configured. Cannot reset.")
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DROP TABLE IF EXISTS observations")
+        self._init_db()
+        logger.info("SQLite log database has been reset.")
+
+    # --- Filtering, Grouping, and Exporting Methods (from ObservationLogger) ---
+    # These now use `load_logs_from_db` as their source.
 
     def export_to_csv(self, path: str = "observations.csv"):
-        """Export logs to a CSV file."""
+        """Export logs from the database to a CSV file.
+
+        Args:
+            path (str): The path to save the CSV file. Default is "observations.csv".
+        """
+        observations = self.load_logs_from_db()
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=["timestamp", "section", "tags", "text", "level"])
             writer.writeheader()
-            for e in self.load_logs():
-                d = e.to_dict()
+            for obs in observations:
+                d = obs.to_dict()
                 d["tags"] = ",".join(d["tags"])
                 writer.writerow(d)
+        logger.info(f"Logs exported to CSV at {path}")
 
     def export_to_json(self, path: str = "observations.json"):
-        """Export logs to a JSON file."""
-        entries = [obs.to_dict() for obs in self.load_logs()]
+        """Export logs from the database to a JSON file.
+
+        Args:
+            path (str): The path to save the JSON file. Default is "observations.json".
+        """
+        observations = self.load_logs_from_db()
+        entries = [obs.to_dict() for obs in observations]
         with open(path, "w", encoding="utf-8") as f:
             json.dump(entries, f, indent=2)
+        logger.info(f"Logs exported to JSON at {path}")
 
     def filter_by_tag(self, *queries: str) -> list[Observation]:
-        """
-            Return observations matching all specified tags.
+        """Return observations from the database matching all specified tags.
 
-            Args:
-        *queries (str): Tags to match (case-insensitive).
+        Args:
+            *queries (str): One or more tags to filter by.
 
-            Returns:
-                List[Observation]: Matching logs.
+        Returns:
+            List[Observation]: A list of observations that match all specified tags.
         """
-        queries = [q.strip().lower() for q in queries]
-        return [obs for obs in self.load_logs() if all(q in obs.tags for q in queries)]
+        queries_lower = {q.strip().lower() for q in queries}
+        return [obs for obs in self.load_logs_from_db() if queries_lower.issubset(set(obs.tags))]
 
     def filter_by_section(self, query: str) -> list[Observation]:
-        """
-        Filter observations by a substring in the section.
+        """Filter observations from the database by a substring in the section.
 
         Args:
-            query (str): Substring to match in section (case-insensitive).
+            query (str): The substring to search for in the section.
 
         Returns:
-            List[Observation]: Matching observations.
+            List[Observation]: A list of observations that contain the specified substring in the section.
         """
         query_lower = query.strip().lower()
-        return [obs for obs in self.load_logs() if obs.section and query_lower in obs.section.lower()]
+        return [obs for obs in self.load_logs_from_db() if obs.section and query_lower in obs.section.lower()]
 
-    def filter_by_time_range(self, start: datetime, end: datetime) -> list[Observation]:
-        """
-        Filter logs between two datetime objects.
-
-        Args:
-            start (datetime): Start timestamp.
-            end (datetime): End timestamp.
-
-        Returns:
-            List[Observation]: Logs within the time range.
-        """
-        return [obs for obs in self.load_logs() if start <= obs.timestamp <= end]
-
-    def filter_by_priority(self, *levels: list[str]) -> list[Observation]:
-        """
-        Filter logs by priority levels.
+    def filter_by_level(self, *levels: str) -> list[Observation]:
+        """Filter observations from the database by priority levels.
 
         Args:
-            *levels (str): Priority levels to match (e.g., 'high', 'low').
+            *levels (str): One or more priority levels to filter by.
 
         Returns:
-            List[Observation]: Matching logs.
+            List[Observation]: A list of observations that match any of the specified priority levels.
         """
-        levels = [lvl.strip().lower() for lvl in levels]
-        return [obs for obs in self.load_logs() if obs.priority and obs.priority.lower() in levels]
+        levels_lower = {lvl.strip().lower() for lvl in levels}
+        return [obs for obs in self.load_logs_from_db() if obs.level and obs.level.lower() in levels_lower]
 
     def get_last_n_logs(self, n: int = 5) -> list[Observation]:
-        """
-        Return the last n observations sorted by timestamp.
+        """Return the last n observations from the database.
 
         Args:
-            n (int): Number of entries to return.
+            n (int): The number of observations to retrieve. Default is 5.
 
         Returns:
-            List[Observation]: Most recent observations.
+            List[Observation]: A list of the last n observations from the database.
         """
-        return sorted(self.load_logs(), key=lambda x: x.timestamp)[-n:]
+        return self.load_logs_from_db()[-n:]
 
-    def group_by_day(self) -> dict[datetime.date, list[Observation]]:
-        """
-        Group observations by their log date.
+    def group_by_day(self) -> dict[str, list[Observation]]:
+        """Group observations from the database by their log date.
 
         Returns:
-            Dict[datetime.date, List[Observation]]: Date-indexed observations.
+            Dict[str, List[Observation]]: A dictionary where keys are log dates and values are lists of observations for that day.
         """
         grouped = defaultdict(list)
-        for obs in self.load_logs():
-            grouped[obs.timestamp.date()].append(obs)
+        for obs in self.load_logs_from_db():
+            grouped[obs.timestamp.strftime("%Y-%m-%d")].append(obs)
         return dict(grouped)
 
 
 if __name__ == "__main__":
-    # Example usage
-    try:
-        logger = ObservationLogger(log_file="example_observations.txt", db_path="example_observations.db")
-        logger.log("This is a test observation.", section="Testing", tag=["test", "note"], level="high")
-        logger.export_to_csv("example_observations.csv")
-        print(logger.load_logs())
-        print(logger.filter_by_tag("test"))
-        print(logger.get_last_n_logs(2))
-    except NameError:
-        logger = ObservationLogger(log_file="mylog.txt", db_path="mylog.db")
-        print("Logger initialized...")
-        logger.update_tags({"debug": "Debugging notes", "infra": "Infrastructure changes"})
-        logger.log(
-            "Started project: Multivariate TS: Weather Forecasting with LSTM.", section="Initial log", tag="meta"
-        )
-        print(logger.tags)
+    # --- Example Usage ---
+    print("--- Initializing ObservationLogger ---")
+    # Create a logger for a specific project component
+    h_logger = ObservationLogger(log_file="project.log", db_path="project.db")
+
+    # Update with custom tags for this project
+    h_logger.update_tags({"pipeline": "Data processing pipeline steps", "validation": "Data validation checks"})
+
+    print("\n--- Logging Observations (check console and project.log) ---")
+    h_logger.log("Started ETL pipeline.", section="ETL", tag="pipeline", level="info")
+    h_logger.log("Raw data contains 10,000 rows.", section="Validation", tag=["data", "validation"], level="debug")
+    h_logger.log("API key is missing.", section="Config", tag="error", level="error")
+
+    print("\n--- Filtering Logs from Database ---")
+    error_logs = h_logger.filter_by_level("error")
+    print(f"Found {len(error_logs)} log(s) with level 'error': {error_logs[0].text}")
+
+    print("\n--- Exporting Logs from Database ---")
+    h_logger.export_to_csv("project_logs.csv")
+    print("Logs exported to project_logs.csv")
+
+    print("\n--- Resetting Database ---")
+    h_logger.reset_db()
+    print(f"Logs in DB after reset: {len(h_logger.load_logs_from_db())}")

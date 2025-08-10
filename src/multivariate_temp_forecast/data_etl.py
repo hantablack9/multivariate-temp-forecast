@@ -9,15 +9,16 @@ sampling rate, and whether to filter the data by year range.
 """
 
 import os
+import shutil
 
 # import json
 from dataclasses import dataclass, field
 from typing import ClassVar, Literal, Optional
-from zipfile import ZipFile
 
+import keras
 import numpy as np
 import pandas as pd
-from tensorflow import keras
+
 from src.multivariate_temp_forecast.logger_factory import ObservationLogger
 
 
@@ -35,9 +36,24 @@ class DataProcessingError(Exception):
     # --- END OF FIX ---
 
 
+class InvalidParametersError(Exception):
+    """Custom exception for invalid parameter values."""
+
+    IMPUTATION_METHODS = "Valid imputation values: ['seasonal', 'forward_fill', 'rolling_mean', 'rolling_median']"
+    RESAMPLE_METHODS = "Valid resampling values: ['mean', 'median', 'first', 'last']"
+    SAMPLING_RATES = "Valid sampling values: ['1H', '1D', '1M', '1Y']"
+    FILTER_YEARS = "Valid filter years: ['True', 'False']"
+    FILTER_RANGE = "Valid years range, inclusive: [2009, 2016]"
+    FILTER_COUNT = "Valid filter count: 2 bounds"
+    FILTER_BOUNDS = "First bound must be less than second bound"
+
+
 @dataclass
 class DataETL:
     """A DVC-compatible class to manage the ETL process for the Jena Climate dataset.
+
+    The class is composed of several private methods to handle each step of the ETL process,
+    orchestrated by the main `run()` method.
 
     This class is designed to work within a Data Version Control (DVC) pipeline.
     It handles the extraction, cleaning, imputation, and transformation of the data,
@@ -46,13 +62,21 @@ class DataETL:
     file, while the output data artifacts are versioned by DVC.
 
     The class enforces a strict operational order:
-    1. Load & Clean
-    2. Impute (if requested)
-    3. Resample (if requested)
-    4. Filter (if requested)
+        1. Data extraction and loading.
+        2. Data imputation (optional).
+        3. Data resampling (optional).
+        4. Data filtering (optional).
 
-    Imputation is mandatory for any subsequent resampling or filtering steps to
-    ensure data integrity.
+    Note: Imputation is mandatory for any subsequent resampling or filtering steps to
+        ensure data integrity.
+
+    The class also provides a logger for tracking observations with optional metadata.
+    It supports various formats including plain text, SQLite, CSV, JSON, and Markdown.
+    It is designed to be extensible and can be integrated into larger data processing pipelines.
+    The logger can be used to log events, errors, and general notes in a structured manner.
+    It also supports grouping observations by date and filtering by tags, sections, and time ranges.
+    It is suitable for data science projects, especially those involving time series analysis and
+    machine learning.
 
     Attributes:
         imputation_method (str): The strategy to use for filling missing values.
@@ -72,17 +96,21 @@ class DataETL:
 
         # Run the pipeline based on run-time flags
         etl_processor.run(**params['run'])
+
+    Methods:
+        run(self, impute: bool = False, resample: bool = False, save: bool = False):
+            Executes the ETL pipeline based on the provided flags.
     """
 
     # --- Configuration Parameters ---
-    imputation_method: Literal["seasonal", "forward_fill", "rolling_mean",
-                                "rolling_median"] = "seasonal"
+    imputation_method: Literal["seasonal", "forward_fill", "rolling_mean", "rolling_median"] = "seasonal"
     resample_method: Literal["mean", "median", "first", "last"] = "mean"
     sampling_rate: Literal["1H", "1D", "1Y"] = "1H"
     filter_years: bool = False
     filter_range: list[int] = field(default_factory=lambda: [2014, 2017])
 
     # --- Internal State ---
+    raw_data_exists: bool = field(init=False, repr=False)
     processed_df: Optional[pd.DataFrame] = field(default=None, repr=False, init=False)
 
     # --- Class Constants ---
@@ -105,8 +133,34 @@ class DataETL:
             "validation": "Input validation",
             "io": "File Input/Output",
         })
+        # The check happens here, when the object is created.
+        self.raw_data_exists = os.path.exists(self.RAW_CSV_PATH)
         os.makedirs(self.RAW_DATA_DIR, exist_ok=True)
         os.makedirs(self.TRANSFORMED_DATA_DIR, exist_ok=True)
+        print(f"DataETL initialized. Raw data exists: {self.raw_data_exists}")
+
+        # --- NEW VALIDATION LOGIC ---
+        self.logger.log("Validating configuration parameters.", tag=["validation", "info"])
+        # Check if filter_range has exactly two values
+        if self.filter_years:
+            if len(self.filter_range) != 2:
+                error_msg = f"{InvalidParametersError.FILTER_COUNT}, got {self.filter_range}"
+                self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                raise InvalidParametersError()
+            else:
+                start_year, end_year = self.filter_range
+                # Check if the years are within the allowed bounds (2009-2016)
+                if not (2009 <= start_year <= 2016 and 2009 <= end_year <= 2016):
+                    error_msg = f"{InvalidParametersError.FILTER_COUNT}, got {self.filter_range}"
+                    self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                    raise InvalidParametersError(error_msg)
+                # Check if the start year is before the end year
+                if start_year > end_year:
+                    error_msg = f"{InvalidParametersError.FILTER_BOUNDS}, got {self.filter_range}"
+                    self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                    raise InvalidParametersError(error_msg)
+            self.logger.log("Configuration parameters are valid.", tag=["validation", "info"])
+        # --- END OF NEW VALIDATION LOGIC ---
 
     def _extract_and_load(self) -> pd.DataFrame:
         """Extracts the dataset and performs initial cleaning and preparation.
@@ -121,38 +175,40 @@ class DataETL:
         Raises:
             DataProcessingError: If the data cannot be downloaded, extracted, or read.
         """
+        if not self.raw_data_exists:
+            self.logger.log("Raw data not found. Starting download.", tag=["extract", "info"])
+            TEMP_CACHE_DIR = "./temp_cache"
 
-        self.logger.log("Extracting and loading raw data.", tag=["extract", "load", "info"])
-        try:
-            # --- THIS IS THE FIX ---
-            # Let Keras manage the download and extraction in its own cache.
-            # The function returns the path to the downloaded file (the zip).
-            zip_path = keras.utils.get_file(
-                origin="https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip",
-                fname="jena_climate.zip",  # Keep the original zip name
-                # extract=True,  # Keras will handle the unzipping
-                # cache_dir="./.cache",  # Use a dedicated cache directory
-            )
-            # The actual CSV file will be at this path after extraction.
-            ZipFile(zip_path, "r").extractall(os.path.dirname(zip_path))
-            # Keras extracts it next to the zip file in its cache.
-            csv_path_in_cache = os.path.join(os.path.dirname(zip_path), "jena_climate_2009_2016.csv")
+            try:
+                # 1. Create a temporary directory for the download
+                os.makedirs(TEMP_CACHE_DIR, exist_ok=True)
 
-            # Now, read directly from the cache path
-            df = pd.read_csv(csv_path_in_cache)
+                # 2. Download the zip file to our controlled temporary location
+                zip_path = keras.utils.get_file(
+                    origin="https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip",
+                    fname="jena_climate.zip",
+                    cache_dir=os.path.abspath(TEMP_CACHE_DIR),
+                    extract=False,  # We will handle extraction ourselves
+                )
 
-            # Optional but good practice: Copy the final raw file to your data directory for DVC
-            # This ensures the raw data is part of your project structure.
-            if not os.path.exists(self.RAW_DATA_DIR):
-                os.makedirs(self.RAW_DATA_DIR)
-            df.to_csv(self.RAW_CSV_PATH, index=False)
-            # --- END OF FIX ---x
+                # 3. Unpack the archive to the same temporary location
+                shutil.unpack_archive(zip_path, TEMP_CACHE_DIR)
 
-        except Exception as e:
-            # --- FIX for B904 and TRY003 ---
-            # Raise the new exception from the original one to preserve the stack trace
-            raise DataProcessingError(DataProcessingError.EXTRACTION_FAILED) from e
-            # --- END OF FIX ---
+                # 4. Move the final CSV file from the temp location to its permanent home
+                extracted_csv_path = os.path.join(TEMP_CACHE_DIR, "jena_climate_2009_2016.csv")
+                shutil.move(extracted_csv_path, self.RAW_CSV_PATH)
+                self.logger.log(f"Raw data successfully saved to {self.RAW_CSV_PATH}", tag=["extract", "info"])
+                self.raw_data_exists = True  # Update state
+
+            except Exception as e:
+                raise DataProcessingError(DataProcessingError.EXTRACTION_FAILED) from e
+            finally:
+                # 5. Clean up the temporary directory completely
+                if os.path.exists(TEMP_CACHE_DIR):
+                    shutil.rmtree(TEMP_CACHE_DIR)
+        else:
+            self.logger.log("Raw data already exists. Skipping download.", tag=["extract", "info"])
+        df = pd.read_csv(self.RAW_CSV_PATH)
 
         # df = pd.read_csv(self.RAW_CSV_PATH)
         df.columns = (
@@ -191,9 +247,15 @@ class DataETL:
             # Fallback for any remaining NaNs (e.g., first year)
             df_imputed.ffill(inplace=True)
             df_imputed.bfill(inplace=True)
-        else:  # Fallback for other simple methods
+        elif self.imputation_method == "forward_fill":
             df_imputed.ffill(inplace=True)
-            df_imputed.bfill(inplace=True)
+            df_imputed.bfill(inplace=True)  # bfill for any leading NaNs
+        elif self.imputation_method == "rolling_mean":
+            df_imputed.fillna(df_imputed.rolling(window=3, min_periods=1, center=True).mean(), inplace=True)
+        elif self.imputation_method == "rolling_median":
+            df_imputed.fillna(df_imputed.rolling(window=3, min_periods=1, center=True).median(), inplace=True)
+        else:
+            raise InvalidParametersError(InvalidParametersError.IMPUTATION_METHODS)
 
         return df_imputed
 
@@ -219,9 +281,9 @@ class DataETL:
             pd.DataFrame: The filtered DataFrame.
         """
         self.logger.log(f"Applying year filter for range: {self.filter_range}", tag=["filter", "info"])
-        return df[(df.index.year >= self.filter_range[0]) & (df.index.year < self.filter_range[1])]
+        return df[(df.index.year >= self.filter_range[0]) & (df.index.year <= self.filter_range[1])]
 
-    def run(self, impute: bool = False, resample: bool = False) -> pd.DataFrame:
+    def run(self, impute: bool = False, resample: bool = False, save: bool = True) -> pd.DataFrame:
         """Executes the full ETL pipeline based on the provided flags.
 
         This method enforces a strict operational order. It first loads the data,
@@ -256,7 +318,8 @@ class DataETL:
             if self.filter_years:
                 self.processed_df = self._filter_data(self.processed_df)
 
-            self.save_output()
+            if save:
+                self.save_output()
 
             self.logger.log("ETL pipeline finished successfully.", tag=["etl", "info"])
             return self.processed_df.reset_index()
