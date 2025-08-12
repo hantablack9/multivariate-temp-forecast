@@ -1,11 +1,23 @@
-"""Main script to run the ETL pipeline for the Jena Climate dataset.
-This script uses argparse to gather configuration for the DataETL class,
-instantiates the class, and runs the pipeline.
-It allows users to specify parameters such as imputation method, resampling method,
-sampling rate, and whether to filter the data by year range.
+"""
+DVC compatible ETL script to load and process the Jena Climate dataset.
 
-# src/components/data_etl.py
+Preprocesses the data by imputing missing values, resampling data,
+and filtering by year range.
 
+Climate Data Time-Series
+We will be using Jena Climate dataset recorded by the Max Planck
+Institute for Biogeochemistry. The dataset consists of 14 features
+such as temperature, pressure, humidity etc, recorded once per 10
+minutes.
+
+Location: Weather Station, Max Planck Institute for Biogeochemistry in Jena, Germany
+
+Time-frame Considered: Jan 10, 2009 - December 31, 2016
+
+Usage:
+    python src/components/data_etl.py
+
+Author: Hanish Paturi
 """
 
 import os
@@ -20,6 +32,8 @@ import numpy as np
 import pandas as pd
 
 from src.multivariate_temp_forecast.logger_factory import ObservationLogger
+
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 
 class DataProcessingError(Exception):
@@ -39,13 +53,26 @@ class DataProcessingError(Exception):
 class InvalidParametersError(Exception):
     """Custom exception for invalid parameter values."""
 
-    IMPUTATION_METHODS = "Valid imputation values: ['seasonal', 'forward_fill', 'rolling_mean', 'rolling_median']"
+    IMPUTE_NOT_PROVIDED = "Invalid request: Imputation is \
+        mandatory for resampling or filtering."
+    IMPUTATION_METHODS = "Valid imputation values: ['seasonal', 'forward_fill', \
+        'rolling_mean', 'rolling_median']"
     RESAMPLE_METHODS = "Valid resampling values: ['mean', 'median', 'first', 'last']"
     SAMPLING_RATES = "Valid sampling values: ['1H', '1D', '1M', '1Y']"
-    FILTER_YEARS = "Valid filter years: ['True', 'False']"
-    FILTER_RANGE = "Valid years range, inclusive: [2009, 2016]"
-    FILTER_COUNT = "Valid filter count: 2 bounds"
+    FILTER_YEARS = "Valid filter years are: 'True', 'False'"
+    FILTER_RANGE = "Filter years range must be in inclusive range of [2009, 2016]"
+    FILTER_COUNT = "Filter range must contain exactly two years."
     FILTER_BOUNDS = "First bound must be less than second bound"
+    INDEX_DTYPE = "Index must be a DatetimeIndex to filter by year"
+
+
+class SinusoidalEncodingError(Exception):
+    """Custom exception for errors during the cyclical encoding process."""
+
+    CYCLIC_COLUMNS_NOT_FOUND = "Cyclic columns not found in the DataFrame"
+    DATETIME_COLUMN_NOT_FOUND = "Datetime column not found in the DataFrame"
+    DATETIME_INDEX_NOT_FOUND = "Datetime index not found in the DataFrame"
+    DATETIME_TYPE_ERROR = "Datetime index must be a DatetimeIndex type"
 
 
 @dataclass
@@ -70,7 +97,7 @@ class DataETL:
     Note: Imputation is mandatory for any subsequent resampling or filtering steps to
         ensure data integrity.
 
-    The class also provides a logger for tracking observations with optional metadata.
+    The class provides a logger for tracking observations with optional metadata.
     It supports various formats including plain text, SQLite, CSV, JSON, and Markdown.
     It is designed to be extensible and can be integrated into larger data processing pipelines.
     The logger can be used to log events, errors, and general notes in a structured manner.
@@ -98,26 +125,37 @@ class DataETL:
         etl_processor.run(**params['run'])
 
     Methods:
-        run(self, impute: bool = False, resample: bool = False, save: bool = False):
-            Executes the ETL pipeline based on the provided flags.
+        run: Executes the ETL pipeline based on the provided flags.
+        _extract_and_load: Extracts the raw data from the source and loads it into a DataFrame.
+        _fix_wind_speed_errors: Fixes wind speed errors in the DataFrame.
+        _impute_data: Imputes missing values in the DataFrame.
+        _resample_data: Resamples the DataFrame to the specified frequency.
+        _filter_data: Filters the DataFrame to the specified year range.
+        _encode_sinusoidal: Encodes cyclic data using a Sinusoidal encoding.
     """
 
     # --- Configuration Parameters ---
+    impute = True
+    resample = True
+    filter_years: bool = False
+    fix_data_errors = True
     imputation_method: Literal["seasonal", "forward_fill", "rolling_mean", "rolling_median"] = "seasonal"
     resample_method: Literal["mean", "median", "first", "last"] = "mean"
     sampling_rate: Literal["1H", "1D", "1Y"] = "1H"
-    filter_years: bool = False
-    filter_range: list[int] = field(default_factory=lambda: [2014, 2017])
+    filter_range: list[int] = field(default_factory=lambda: [2014, 2017], repr=False)
+    encode_sinusoidal = True
+    cyclic_cols: list[str] = field(default_factory=lambda: ["wd_deg"], repr=False)
+    anomaly_cols: list[str] = field(default_factory=lambda: ["wv_ms", "max_wv_ms"], repr=False)
 
     # --- Internal State ---
     raw_data_exists: bool = field(init=False, repr=False)
-    processed_df: Optional[pd.DataFrame] = field(default=None, repr=False, init=False)
+    processed_df: Optional[pd.DataFrame] = field(init=False, default=None, repr=False)
 
     # --- Class Constants ---
     RAW_DATA_DIR: ClassVar[str] = "./data/raw"
-    TRANSFORMED_DATA_DIR: ClassVar[str] = "./data/transformed"
+    PREPROCESSED_CSV_DIR: ClassVar[str] = "./data/preprocessed"
     RAW_CSV_PATH: ClassVar[str] = os.path.join(RAW_DATA_DIR, "jena_climate_2009_2016.csv")
-    TRANSFORMED_CSV_PATH: ClassVar[str] = os.path.join(TRANSFORMED_DATA_DIR, "data.csv")
+    PREPROCESSED_CSV_PATH: ClassVar[str] = os.path.join(PREPROCESSED_CSV_DIR, "preprocessed.csv")
 
     def __post_init__(self):
         """Initializes the logger and ensures data directories exist."""
@@ -136,30 +174,44 @@ class DataETL:
         # The check happens here, when the object is created.
         self.raw_data_exists = os.path.exists(self.RAW_CSV_PATH)
         os.makedirs(self.RAW_DATA_DIR, exist_ok=True)
-        os.makedirs(self.TRANSFORMED_DATA_DIR, exist_ok=True)
-        print(f"DataETL initialized. Raw data exists: {self.raw_data_exists}")
+        os.makedirs(self.PREPROCESSED_CSV_DIR, exist_ok=True)
 
+        self._validate_parameters()
+
+    def _validate_parameters(self):
+        """Private method to validate configuration parameters."""
         # --- NEW VALIDATION LOGIC ---
         self.logger.log("Validating configuration parameters.", tag=["validation", "info"])
+
+        if not self.impute and (self.resample or self.filter_years):
+            error_msg = "Invalid request: Imputation is mandatory for resampling or filtering."
+            self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+            raise InvalidParametersError(InvalidParametersError.IMPUTE_NOT_PROVIDED)
+
+        if self.imputation_method not in ["seasonal", "forward_fill", "rolling_mean", "rolling_median"]:
+            error_msg = f"{InvalidParametersError.IMPUTATION_METHODS}, got {self.imputation_method}"
+            # self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+            raise InvalidParametersError(InvalidParametersError.IMPUTATION_METHODS)
         # Check if filter_range has exactly two values
         if self.filter_years:
             if len(self.filter_range) != 2:
                 error_msg = f"{InvalidParametersError.FILTER_COUNT}, got {self.filter_range}"
-                self.logger.log(error_msg, tag=["validation", "error"], level="warning")
-                raise InvalidParametersError()
-            else:
-                start_year, end_year = self.filter_range
-                # Check if the years are within the allowed bounds (2009-2016)
-                if not (2009 <= start_year <= 2016 and 2009 <= end_year <= 2016):
-                    error_msg = f"{InvalidParametersError.FILTER_COUNT}, got {self.filter_range}"
-                    self.logger.log(error_msg, tag=["validation", "error"], level="warning")
-                    raise InvalidParametersError(error_msg)
-                # Check if the start year is before the end year
-                if start_year > end_year:
-                    error_msg = f"{InvalidParametersError.FILTER_BOUNDS}, got {self.filter_range}"
-                    self.logger.log(error_msg, tag=["validation", "error"], level="warning")
-                    raise InvalidParametersError(error_msg)
+                # self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                raise InvalidParametersError(error_msg)
+
+            start_year, end_year = self.filter_range
+            # Check if the years are within the allowed bounds (2009-2016)
+            if not (2009 <= start_year <= 2016 and 2009 <= end_year <= 2016):
+                error_msg = f"{InvalidParametersError.FILTER_RANGE}, got {self.filter_range}"
+                # self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                raise InvalidParametersError(error_msg)
+            # Check if the start year is before the end year
+            if start_year >= end_year:
+                error_msg = f"{InvalidParametersError.FILTER_BOUNDS}, got {self.filter_range}"
+                # self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                raise InvalidParametersError(error_msg)
             self.logger.log("Configuration parameters are valid.", tag=["validation", "info"])
+
         # --- END OF NEW VALIDATION LOGIC ---
 
     def _extract_and_load(self) -> pd.DataFrame:
@@ -177,25 +229,25 @@ class DataETL:
         """
         if not self.raw_data_exists:
             self.logger.log("Raw data not found. Starting download.", tag=["extract", "info"])
-            TEMP_CACHE_DIR = "./temp_cache"
+            temp_cache_dir = "temp_cache"
 
             try:
                 # 1. Create a temporary directory for the download
-                os.makedirs(TEMP_CACHE_DIR, exist_ok=True)
+                os.makedirs(temp_cache_dir, exist_ok=True)
 
                 # 2. Download the zip file to our controlled temporary location
                 zip_path = keras.utils.get_file(
                     origin="https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip",
                     fname="jena_climate.zip",
-                    cache_dir=os.path.abspath(TEMP_CACHE_DIR),
+                    cache_dir=os.path.abspath(temp_cache_dir),
                     extract=False,  # We will handle extraction ourselves
                 )
 
                 # 3. Unpack the archive to the same temporary location
-                shutil.unpack_archive(zip_path, TEMP_CACHE_DIR)
+                shutil.unpack_archive(zip_path, temp_cache_dir)
 
                 # 4. Move the final CSV file from the temp location to its permanent home
-                extracted_csv_path = os.path.join(TEMP_CACHE_DIR, "jena_climate_2009_2016.csv")
+                extracted_csv_path = os.path.join(temp_cache_dir, "jena_climate_2009_2016.csv")
                 shutil.move(extracted_csv_path, self.RAW_CSV_PATH)
                 self.logger.log(f"Raw data successfully saved to {self.RAW_CSV_PATH}", tag=["extract", "info"])
                 self.raw_data_exists = True  # Update state
@@ -204,10 +256,11 @@ class DataETL:
                 raise DataProcessingError(DataProcessingError.EXTRACTION_FAILED) from e
             finally:
                 # 5. Clean up the temporary directory completely
-                if os.path.exists(TEMP_CACHE_DIR):
-                    shutil.rmtree(TEMP_CACHE_DIR)
+                if os.path.exists(temp_cache_dir):
+                    shutil.rmtree(temp_cache_dir)
         else:
             self.logger.log("Raw data already exists. Skipping download.", tag=["extract", "info"])
+        self.logger.log(f"Loading and cleaning data from {self.RAW_CSV_PATH}", tag="load")
         df = pd.read_csv(self.RAW_CSV_PATH)
 
         # df = pd.read_csv(self.RAW_CSV_PATH)
@@ -224,6 +277,15 @@ class DataETL:
         full_index = pd.date_range(start=df.index.min(), end=df.index.max(), freq="10min")
         df = df.reindex(full_index)
         df.index.name = "timestamp"
+        return df
+
+    def _fix_wind_speed_errors(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Fixes negative wind speed values using efficient, vectorized operations."""
+        self.logger.log("Fixing negative wind speed values.", tag="fix")  # Use cleaned column names
+        for col in self.anomaly_cols:
+            if col in df.columns:
+                # Replace values less than 0 with NaN, then forward-fill
+                df[col] = df[col].mask(df[col] < 0).ffill().bfill()
         return df
 
     def _impute_data(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -281,9 +343,66 @@ class DataETL:
             pd.DataFrame: The filtered DataFrame.
         """
         self.logger.log(f"Applying year filter for range: {self.filter_range}", tag=["filter", "info"])
+
+        if not isinstance(df.index, pd.DatetimeIndex):
+            raise InvalidParametersError(InvalidParametersError.INDEX_DTYPE)
         return df[(df.index.year >= self.filter_range[0]) & (df.index.year <= self.filter_range[1])]
 
-    def run(self, impute: bool = False, resample: bool = False, save: bool = True) -> pd.DataFrame:
+        # --- NEW: Integrated Sinusoidal Encoder Method ---
+
+    def _encode_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Applies sinusoidal encoding to the DataFrame's DatetimeIndex and cyclic columns.
+        """
+        self.logger.log("Applying sinusoidal encoding.", tag="encoding")
+
+        df_encoded = df.copy()
+        try:
+            if not isinstance(df_encoded.index, pd.DatetimeIndex):
+                timestamps = pd.to_datetime(df_encoded.index)
+
+                # --- 1. Timestamp Features (from the index) ---
+                self.logger.log("Encoding timestamp features.", tag="encoding")
+
+                # Hour of day (0-23)
+                df_encoded["hour_sin"] = np.sin(2 * np.pi * timestamps.hour / 24.0)
+                df_encoded["hour_cos"] = np.cos(2 * np.pi * timestamps.hour / 24.0)
+
+                # Day of month (handles different month lengths correctly)
+                days_in_month = timestamps.days_in_month
+                df_encoded["day_of_month_sin"] = np.sin(2 * np.pi * timestamps.day / days_in_month)
+                df_encoded["day_of_month_cos"] = np.cos(2 * np.pi * timestamps.day / days_in_month)
+
+                # Day of year (handles leap years correctly)
+                days_in_year = np.where(timestamps.is_leap_year, 366, 365)
+                df_encoded["day_of_year_sin"] = np.sin(2 * np.pi * timestamps.dayofyear / days_in_year)
+                df_encoded["day_of_year_cos"] = np.cos(2 * np.pi * timestamps.dayofyear / days_in_year)
+
+                # Month of year (1-12)
+                df_encoded["month_sin"] = np.sin(2 * np.pi * timestamps.month / 12.0)
+                df_encoded["month_cos"] = np.cos(2 * np.pi * timestamps.month / 12.0)
+
+                # --- 2. Other Cyclical Column Features ---
+                if self.cyclic_cols:
+                    self.logger.log(f"Encoding cyclical columns: {self.cyclic_cols}", tag="encoding")
+                    for col in self.cyclic_cols:
+                        if col in df_encoded.columns:
+                            # Assuming the cycle is 360 (like degrees)
+                            df_encoded[f"{col}_sin"] = np.sin(2 * np.pi * df_encoded[col] / 360.0)
+                            df_encoded[f"{col}_cos"] = np.cos(2 * np.pi * df_encoded[col] / 360.0)
+                        else:
+                            self.logger.log(
+                                f"Warning: Cyclical column '{col}' not found in DataFrame.",
+                                tag="encoding",
+                                level="warning",
+                            )
+        except Exception as e:
+            self.logger.log(f"Error: {e}", tag="encoding", level="error")
+            raise SinusoidalEncodingError(SinusoidalEncodingError.DATETIME_TYPE_ERROR) from e
+        else:
+            return df_encoded
+
+    def run(self, save_output: bool = False) -> pd.DataFrame:
         """Executes the full ETL pipeline based on the provided flags.
 
         This method enforces a strict operational order. It first loads the data,
@@ -292,9 +411,7 @@ class DataETL:
         Finally, it saves the output to a fixed location for DVC.
 
         Args:
-            impute (bool): If True, performs data imputation.
-            resample (bool): If True, performs data resampling.
-
+            save (bool): Whether to save the processed DataFrame to a CSV file.
         Returns:
             pd.DataFrame: The final, processed DataFrame with a reset index.
 
@@ -304,36 +421,37 @@ class DataETL:
         """
         self.logger.log("ETL pipeline started.", tag=["etl", "info"])
 
-        if (resample or self.filter_years) and not impute:
-            error_msg = "Invalid request: Imputation is mandatory for resampling or filtering. Set impute=True."
-            self.logger.log(error_msg, tag=["validation", "error"], level="warning")
-            raise DataProcessingError(error_msg)
-
         try:
-            self.processed_df = self._extract_and_load()
-            if impute:
-                self.processed_df = self._impute_data(self.processed_df)
-            if resample:
-                self.processed_df = self._resample_data(self.processed_df)
+            df = self._extract_and_load()
+            if self.fix_data_errors:
+                df = self._fix_wind_speed_errors(df)
+            if self.impute:
+                df = self._impute_data(df)
+            if self.encode_sinusoidal:
+                df = self._encode_features(df)
+            if self.resample:
+                df = self._resample_data(df)
             if self.filter_years:
-                self.processed_df = self._filter_data(self.processed_df)
+                df = self._filter_data(df)
 
-            if save:
-                self.save_output()
+            self.processed_df = df
 
-            self.logger.log("ETL pipeline finished successfully.", tag=["etl", "info"])
+            if save_output:
+                self._save_output()
+
+            self.logger.log("Preprocessing complete. ETL pipeline finished successfully.", tag=["etl", "info"])
             return self.processed_df.reset_index()
         except Exception as e:
             self.logger.log(f"ETL pipeline failed: {e}", tag=["etl", "error"], level="warning")
-            raise
+            raise DataProcessingError(DataProcessingError.EXTRACTION_FAILED) from e
 
-    def save_output(self):
+    def _save_output(self):
         """Saves the final processed DataFrame to a fixed path for DVC tracking."""
         if self.processed_df is None:
             # --- FIX for TRY003 ---
             raise DataProcessingError(DataProcessingError.NO_DATA_TO_SAVE)
             # --- END OF FIX ---
 
-        self.logger.log(f"Saving transformed data to {self.TRANSFORMED_CSV_PATH}", tag=["io", "info"])
-        self.processed_df.reset_index().to_csv(self.TRANSFORMED_CSV_PATH, index=False)
+        self.logger.log(f"Saving pre-processed data to {self.PREPROCESSED_CSV_PATH}", tag=["io", "info"])
+        self.processed_df.reset_index().to_csv(self.PREPROCESSED_CSV_PATH, index=False)
         self.logger.log("Save complete.", tag=["io", "info"])
