@@ -1,4 +1,9 @@
-# src/multivariate_temp_forecast/logger_factory.py
+"""
+A powerful hybrid logger combining real-time console/file logging via Loguru
+with structured data persistence in SQLite for advanced analysis and exporting.
+
+Author: Hanish Paturi
+"""
 
 import csv
 import json
@@ -7,10 +12,15 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import ClassVar, Optional, Union
 
 from loguru import logger
+
+
+class InvalidParametersError(ValueError):
+    """Custom exception for invalid parameter values. Used for validation."""
+
+    INVALID_TAGS = "Invalid tags. Use 'update_tags()' to register them."
 
 
 @dataclass
@@ -18,9 +28,9 @@ class Observation:
     """Represents a single structured log entry for database and export use."""
 
     text: str
+    tags: list[str]
     timestamp: datetime
     section: Optional[str] = None
-    tags: Optional[list[str]] = None
     level: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -147,7 +157,7 @@ class ObservationLogger:
         tag_list = [tag] if isinstance(tag, str) else (tag or [])
         invalid_tags = [t for t in tag_list if t not in self.tags]
         if invalid_tags:
-            raise ValueError(f"Invalid tags: {invalid_tags}. Use 'update_tags()' to register them.")
+            raise InvalidParametersError(InvalidParametersError.INVALID_TAGS)
 
         # 2. Use Loguru for real-time logging
         log_message = f"[{', '.join(tag_list).upper()}] {text}" if tag_list else text
