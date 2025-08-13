@@ -135,15 +135,16 @@ class DataETL:
     """
 
     # --- Configuration Parameters ---
-    impute = True
-    resample = True
+    # Every parameter controlled by params.yaml MUST be a dataclass field with a type hint
+    impute: bool = True
+    resample: bool = True
     filter_years: bool = False
-    fix_data_errors = True
+    fix_data_errors: bool = True
     imputation_method: Literal["seasonal", "forward_fill", "rolling_mean", "rolling_median"] = "seasonal"
     resample_method: Literal["mean", "median", "first", "last"] = "mean"
-    sampling_rate: Literal["1H", "1D", "1Y"] = "1H"
+    sampling_rate: Literal["1h", "1d", "1y"] = "1h"
     filter_range: list[int] = field(default_factory=lambda: [2014, 2017], repr=False)
-    encode_sinusoidal = True
+    encode_sinusoidal: bool = True
     cyclic_cols: list[str] = field(default_factory=lambda: ["wd_deg"], repr=False)
     anomaly_cols: list[str] = field(default_factory=lambda: ["wv_ms", "max_wv_ms"], repr=False)
 
@@ -152,8 +153,8 @@ class DataETL:
     processed_df: Optional[pd.DataFrame] = field(init=False, default=None, repr=False)
 
     # --- Class Constants ---
-    RAW_DATA_DIR: ClassVar[str] = "./data/raw"
-    PREPROCESSED_CSV_DIR: ClassVar[str] = "./data/preprocessed"
+    RAW_DATA_DIR: ClassVar[str] = os.path.join("data", "raw")
+    PREPROCESSED_CSV_DIR: ClassVar[str] = os.path.join("data", "preprocessed")
     RAW_CSV_PATH: ClassVar[str] = os.path.join(RAW_DATA_DIR, "jena_climate_2009_2016.csv")
     PREPROCESSED_CSV_PATH: ClassVar[str] = os.path.join(PREPROCESSED_CSV_DIR, "preprocessed.csv")
 
@@ -164,23 +165,27 @@ class DataETL:
             "etl": "Main ETL Process Control",
             "extract": "Data Extraction Step",
             "load": "Data Loading & Cleaning Step",
+            "encode": "Cyclic Encoding Step",
             "impute": "Imputation Step",
             "filter": "Filtering Step",
             "resample": "Resampling Step",
             "error": "Error Messages",
             "validation": "Input validation",
             "io": "File Input/Output",
+            "info": "Informational messages",
+            "fix": "Data Fixing Step",
         })
-        # The check happens here, when the object is created.
-        self.raw_data_exists = os.path.exists(self.RAW_CSV_PATH)
-        os.makedirs(self.RAW_DATA_DIR, exist_ok=True)
-        os.makedirs(self.PREPROCESSED_CSV_DIR, exist_ok=True)
+        # # The check happens here, when the object is created.
+        # # Moving this to the idempotent _download_if_needed().
+        # self.raw_data_exists = os.path.exists(self.RAW_CSV_PATH)
+        # os.makedirs(self.RAW_DATA_DIR, exist_ok=True)
+        # os.makedirs(self.PREPROCESSED_CSV_DIR, exist_ok=True)
 
         self._validate_parameters()
 
+    # --- NEW VALIDATION LOGIC ---
     def _validate_parameters(self):
         """Private method to validate configuration parameters."""
-        # --- NEW VALIDATION LOGIC ---
         self.logger.log("Validating configuration parameters.", tag=["validation", "info"])
 
         if not self.impute and (self.resample or self.filter_years):
@@ -190,34 +195,73 @@ class DataETL:
 
         if self.imputation_method not in ["seasonal", "forward_fill", "rolling_mean", "rolling_median"]:
             error_msg = f"{InvalidParametersError.IMPUTATION_METHODS}, got {self.imputation_method}"
-            # self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+            self.logger.log(error_msg, tag=["validation", "error"], level="warning")
             raise InvalidParametersError(InvalidParametersError.IMPUTATION_METHODS)
         # Check if filter_range has exactly two values
         if self.filter_years:
             if len(self.filter_range) != 2:
                 error_msg = f"{InvalidParametersError.FILTER_COUNT}, got {self.filter_range}"
-                # self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                self.logger.log(error_msg, tag=["validation", "error"], level="warning")
                 raise InvalidParametersError(error_msg)
 
             start_year, end_year = self.filter_range
             # Check if the years are within the allowed bounds (2009-2016)
             if not (2009 <= start_year <= 2016 and 2009 <= end_year <= 2016):
                 error_msg = f"{InvalidParametersError.FILTER_RANGE}, got {self.filter_range}"
-                # self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                self.logger.log(error_msg, tag=["validation", "error"], level="warning")
                 raise InvalidParametersError(error_msg)
             # Check if the start year is before the end year
             if start_year >= end_year:
                 error_msg = f"{InvalidParametersError.FILTER_BOUNDS}, got {self.filter_range}"
-                # self.logger.log(error_msg, tag=["validation", "error"], level="warning")
+                self.logger.log(error_msg, tag=["validation", "error"], level="warning")
                 raise InvalidParametersError(error_msg)
             self.logger.log("Configuration parameters are valid.", tag=["validation", "info"])
 
-        # --- END OF NEW VALIDATION LOGIC ---
+    # --- END OF NEW VALIDATION LOGIC ---
+
+    # --- NEW: Dedicated Download Method ---
+    def download_if_needed(self):
+        """
+        Checks for the raw data file and downloads it if it does not exist.
+        This method is idempotent and safe to call multiple times.
+        """
+        # Check for the file at the moment it's needed.
+        if os.path.exists(self.RAW_CSV_PATH):
+            self.logger.log("Raw data already exists. Skipping download.", tag="extract")
+            return
+
+        self.logger.log("Raw data not found. Starting download.", tag="extract")
+
+        # Ensure the target directory exists before moving the file.
+        os.makedirs(self.RAW_DATA_DIR, exist_ok=True)
+
+        temp_cache_dir = "temp_cache"
+        try:
+            os.makedirs(temp_cache_dir, exist_ok=True)
+            zip_path = keras.utils.get_file(
+                origin= "https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip",
+                fname = "jena_climate_2009_2016.zip",
+                extract = False,
+                cache_dir=os.path.abspath(temp_cache_dir )
+            )
+            shutil.unpack_archive(zip_path, temp_cache_dir)
+            extracted_csv_path = os.path.join(temp_cache_dir, "jena_climate_2009_2016.csv")
+            shutil.move(extracted_csv_path, self.RAW_CSV_PATH)
+            self.logger.log(f"Raw data successfully saved to {self.RAW_CSV_PATH}", tag="extract")
+        except Exception as e:
+            raise DataProcessingError(DataProcessingError.EXTRACTION_FAILED) from e
+        finally:
+            if os.path.exists(temp_cache_dir):
+                shutil.rmtree(temp_cache_dir)
+    # --- END OF NEW METHOD ---
 
     def _extract_and_load(self) -> pd.DataFrame:
         """Extracts the dataset and performs initial cleaning and preparation.
 
-        This method handles downloading the zipped data, extracting the CSV,
+        Ensures raw data is present by calling the download helper, then loads and
+        cleans the data from the local CSV file.
+
+        This method performs the following operations: extracting and loading the CSV,
         standardizing column names, parsing the datetime column, and reindexing
         to a consistent 10-minute frequency, which introduces NaNs for DVC to track.
 
@@ -227,39 +271,11 @@ class DataETL:
         Raises:
             DataProcessingError: If the data cannot be downloaded, extracted, or read.
         """
-        if not self.raw_data_exists:
-            self.logger.log("Raw data not found. Starting download.", tag=["extract", "info"])
-            temp_cache_dir = "temp_cache"
+        # --- THIS IS THE REFACTORED LOGIC ---
+        # 1. Ensure the data is present.
+        self.download_if_needed()
+        # --- END OF REFACTORED LOGIC ---
 
-            try:
-                # 1. Create a temporary directory for the download
-                os.makedirs(temp_cache_dir, exist_ok=True)
-
-                # 2. Download the zip file to our controlled temporary location
-                zip_path = keras.utils.get_file(
-                    origin="https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip",
-                    fname="jena_climate.zip",
-                    cache_dir=os.path.abspath(temp_cache_dir),
-                    extract=False,  # We will handle extraction ourselves
-                )
-
-                # 3. Unpack the archive to the same temporary location
-                shutil.unpack_archive(zip_path, temp_cache_dir)
-
-                # 4. Move the final CSV file from the temp location to its permanent home
-                extracted_csv_path = os.path.join(temp_cache_dir, "jena_climate_2009_2016.csv")
-                shutil.move(extracted_csv_path, self.RAW_CSV_PATH)
-                self.logger.log(f"Raw data successfully saved to {self.RAW_CSV_PATH}", tag=["extract", "info"])
-                self.raw_data_exists = True  # Update state
-
-            except Exception as e:
-                raise DataProcessingError(DataProcessingError.EXTRACTION_FAILED) from e
-            finally:
-                # 5. Clean up the temporary directory completely
-                if os.path.exists(temp_cache_dir):
-                    shutil.rmtree(temp_cache_dir)
-        else:
-            self.logger.log("Raw data already exists. Skipping download.", tag=["extract", "info"])
         self.logger.log(f"Loading and cleaning data from {self.RAW_CSV_PATH}", tag="load")
         df = pd.read_csv(self.RAW_CSV_PATH)
 
@@ -354,7 +370,7 @@ class DataETL:
         """
         Applies sinusoidal encoding to the DataFrame's DatetimeIndex and cyclic columns.
         """
-        self.logger.log("Applying sinusoidal encoding.", tag="encoding")
+        self.logger.log("Applying sinusoidal encoding.", tag="encode")
 
         df_encoded = df.copy()
         try:
@@ -362,7 +378,7 @@ class DataETL:
                 timestamps = pd.to_datetime(df_encoded.index)
 
                 # --- 1. Timestamp Features (from the index) ---
-                self.logger.log("Encoding timestamp features.", tag="encoding")
+                self.logger.log("Encoding timestamp features.", tag="encode")
 
                 # Hour of day (0-23)
                 df_encoded["hour_sin"] = np.sin(2 * np.pi * timestamps.hour / 24.0)
@@ -384,7 +400,7 @@ class DataETL:
 
                 # --- 2. Other Cyclical Column Features ---
                 if self.cyclic_cols:
-                    self.logger.log(f"Encoding cyclical columns: {self.cyclic_cols}", tag="encoding")
+                    self.logger.log(f"Encoding cyclical columns: {self.cyclic_cols}", tag="encode")
                     for col in self.cyclic_cols:
                         if col in df_encoded.columns:
                             # Assuming the cycle is 360 (like degrees)
@@ -393,16 +409,16 @@ class DataETL:
                         else:
                             self.logger.log(
                                 f"Warning: Cyclical column '{col}' not found in DataFrame.",
-                                tag="encoding",
+                                tag="encode",
                                 level="warning",
                             )
         except Exception as e:
-            self.logger.log(f"Error: {e}", tag="encoding", level="error")
+            self.logger.log(f"Error: {e}", tag="encode", level="error")
             raise SinusoidalEncodingError(SinusoidalEncodingError.DATETIME_TYPE_ERROR) from e
         else:
             return df_encoded
 
-    def run(self, save_output: bool = False) -> pd.DataFrame:
+    def run(self, save_output: bool = True) -> pd.DataFrame:
         """Executes the full ETL pipeline based on the provided flags.
 
         This method enforces a strict operational order. It first loads the data,
