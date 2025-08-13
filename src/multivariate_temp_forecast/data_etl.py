@@ -19,7 +19,6 @@ Usage:
 
 Author: Hanish Paturi
 """
-
 import os
 import shutil
 
@@ -140,16 +139,23 @@ class DataETL:
     resample: bool = True
     filter_years: bool = False
     fix_data_errors: bool = True
-    imputation_method: Literal["seasonal", "forward_fill", "rolling_mean", "rolling_median"] = "seasonal"
+    imputation_method: Literal["seasonal",\
+                               "forward_fill", "rolling_mean", "rolling_median"] = "seasonal"
     resample_method: Literal["mean", "median", "first", "last"] = "mean"
     sampling_rate: Literal["1h", "1d", "1y"] = "1h"
-    filter_range: list[int] = field(default_factory=lambda: [2014, 2017], repr=False)
+    filter_range: list[int] = field(default_factory=lambda: [2014, 2017], repr=False, metadata =
+                        {"help": "Filter years range must be in inclusive range of [2009, 2016]"})
     encode_sinusoidal: bool = True
-    cyclic_cols: list[str] = field(default_factory=lambda: ["wd_deg"], repr=False)
-    anomaly_cols: list[str] = field(default_factory=lambda: ["wv_ms", "max_wv_ms"], repr=False)
+    cyclic_cols: list[str] = field(default_factory=lambda: ["wd"], repr=False, metadata =
+                                    {"help": "Cyclic columns to encode"})
+    anomaly_cols: list[str] = field(default_factory=lambda: ["wv", "max__wv"], repr=False,
+                                    metadata = {"help": "Anomaly columns to detect"})
 
     # --- Internal State ---
-    raw_data_exists: bool = field(init=False, repr=False)
+    raw_data_exists: bool = field(init=False, repr=False, metadata =
+                                  {"help": "Flag indicating if raw data exists"})
+    preprocessed_data_exists: bool = field(init=False, repr=False, metadata =
+                                            {"help": "Flag indicating if preprocessed data exists"})
     processed_df: Optional[pd.DataFrame] = field(init=False, default=None, repr=False)
 
     # --- Class Constants ---
@@ -174,6 +180,7 @@ class DataETL:
             "io": "File Input/Output",
             "info": "Informational messages",
             "fix": "Data Fixing Step",
+            "reduce_precision": "Precision Reduction Step"
         })
         # # The check happens here, when the object is created.
         # # Moving this to the idempotent _download_if_needed().
@@ -239,10 +246,10 @@ class DataETL:
         try:
             os.makedirs(temp_cache_dir, exist_ok=True)
             zip_path = keras.utils.get_file(
-                origin= "https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip",
-                fname = "jena_climate_2009_2016.zip",
-                extract = False,
-                cache_dir=os.path.abspath(temp_cache_dir )
+                origin="https://storage.googleapis.com/tensorflow/tf-keras-datasets/jena_climate_2009_2016.csv.zip",
+                fname="jena_climate_2009_2016.zip",
+                extract=False,
+                cache_dir=os.path.abspath(temp_cache_dir),
             )
             shutil.unpack_archive(zip_path, temp_cache_dir)
             extracted_csv_path = os.path.join(temp_cache_dir, "jena_climate_2009_2016.csv")
@@ -253,6 +260,7 @@ class DataETL:
         finally:
             if os.path.exists(temp_cache_dir):
                 shutil.rmtree(temp_cache_dir)
+
     # --- END OF NEW METHOD ---
 
     def _extract_and_load(self) -> pd.DataFrame:
@@ -366,7 +374,7 @@ class DataETL:
 
         # --- NEW: Integrated Sinusoidal Encoder Method ---
 
-    def _encode_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _encode_sinusoidal(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Applies sinusoidal encoding to the DataFrame's DatetimeIndex and cyclic columns.
         """
@@ -375,48 +383,62 @@ class DataETL:
         df_encoded = df.copy()
         try:
             if not isinstance(df_encoded.index, pd.DatetimeIndex):
-                timestamps = pd.to_datetime(df_encoded.index)
+                self.logger.log("Index is not a DatetimeIndex.", tag="encode")
+                raise SinusoidalEncodingError(SinusoidalEncodingError.DATETIME_TYPE_ERROR)
 
-                # --- 1. Timestamp Features (from the index) ---
-                self.logger.log("Encoding timestamp features.", tag="encode")
+            timestamps = df_encoded.index
 
-                # Hour of day (0-23)
-                df_encoded["hour_sin"] = np.sin(2 * np.pi * timestamps.hour / 24.0)
-                df_encoded["hour_cos"] = np.cos(2 * np.pi * timestamps.hour / 24.0)
+            # --- 1. Timestamp Features (from the index) ---
+            self.logger.log("Encoding timestamp features.", tag="encode")
 
-                # Day of month (handles different month lengths correctly)
-                days_in_month = timestamps.days_in_month
-                df_encoded["day_of_month_sin"] = np.sin(2 * np.pi * timestamps.day / days_in_month)
-                df_encoded["day_of_month_cos"] = np.cos(2 * np.pi * timestamps.day / days_in_month)
+            # Hour of day (0-23)
+            df_encoded["hour_sin"] = np.sin(2 * np.pi * timestamps.hour / 24.0)
+            df_encoded["hour_cos"] = np.cos(2 * np.pi * timestamps.hour / 24.0)
 
-                # Day of year (handles leap years correctly)
-                days_in_year = np.where(timestamps.is_leap_year, 366, 365)
-                df_encoded["day_of_year_sin"] = np.sin(2 * np.pi * timestamps.dayofyear / days_in_year)
-                df_encoded["day_of_year_cos"] = np.cos(2 * np.pi * timestamps.dayofyear / days_in_year)
+            # Day of month (handles different month lengths correctly)
+            days_in_month = timestamps.days_in_month
+            df_encoded["day_of_month_sin"] = np.sin(2 * np.pi * timestamps.day / days_in_month)
+            df_encoded["day_of_month_cos"] = np.cos(2 * np.pi * timestamps.day / days_in_month)
 
-                # Month of year (1-12)
-                df_encoded["month_sin"] = np.sin(2 * np.pi * timestamps.month / 12.0)
-                df_encoded["month_cos"] = np.cos(2 * np.pi * timestamps.month / 12.0)
+            # Day of year (handles leap years correctly)
+            days_in_year = np.where(timestamps.is_leap_year, 366, 365)
+            df_encoded["day_of_year_sin"] = np.sin(2 * np.pi * timestamps.dayofyear / days_in_year)
+            df_encoded["day_of_year_cos"] = np.cos(2 * np.pi * timestamps.dayofyear / days_in_year)
 
-                # --- 2. Other Cyclical Column Features ---
-                if self.cyclic_cols:
-                    self.logger.log(f"Encoding cyclical columns: {self.cyclic_cols}", tag="encode")
-                    for col in self.cyclic_cols:
-                        if col in df_encoded.columns:
-                            # Assuming the cycle is 360 (like degrees)
-                            df_encoded[f"{col}_sin"] = np.sin(2 * np.pi * df_encoded[col] / 360.0)
-                            df_encoded[f"{col}_cos"] = np.cos(2 * np.pi * df_encoded[col] / 360.0)
-                        else:
-                            self.logger.log(
-                                f"Warning: Cyclical column '{col}' not found in DataFrame.",
-                                tag="encode",
-                                level="warning",
-                            )
+            # Month of year (1-12)
+            df_encoded["month_sin"] = np.sin(2 * np.pi * timestamps.month / 12.0)
+            df_encoded["month_cos"] = np.cos(2 * np.pi * timestamps.month / 12.0)
+
+            # --- 2. Other Cyclical Column Features ---
+            if self.cyclic_cols:
+                self.logger.log(f"Encoding cyclical columns: {self.cyclic_cols}", tag="encode")
+                for col in self.cyclic_cols:
+                    if col in df_encoded.columns:
+                        # Assuming the cycle is 360 (like degrees)
+                        df_encoded[f"{col}_sin"] = np.sin(2 * np.pi * df_encoded[col] / 360.0)
+                        df_encoded[f"{col}_cos"] = np.cos(2 * np.pi * df_encoded[col] / 360.0)
+                    else:
+                        self.logger.log(
+                            f"Warning: Cyclical column '{col}' not found in DataFrame.",
+                            tag="encode",
+                            level="warning",
+                        )
         except Exception as e:
             self.logger.log(f"Error: {e}", tag="encode", level="error")
             raise SinusoidalEncodingError(SinusoidalEncodingError.DATETIME_TYPE_ERROR) from e
         else:
             return df_encoded
+
+    def _reduce_precision(self, df:pd.DataFrame):
+        """
+        Reduces the precision of float columns to 16 decimal places.
+        """
+        self.logger.log("Reducing precision of float columns.", tag="reduce_precision")
+
+        for col in df.select_dtypes(include = 'float').columns:
+            df[col] = df[col].astype('float16')
+
+        return df
 
     def run(self, save_output: bool = True) -> pd.DataFrame:
         """Executes the full ETL pipeline based on the provided flags.
@@ -444,13 +466,13 @@ class DataETL:
             if self.impute:
                 df = self._impute_data(df)
             if self.encode_sinusoidal:
-                df = self._encode_features(df)
+                df = self._encode_sinusoidal(df)
             if self.resample:
                 df = self._resample_data(df)
             if self.filter_years:
                 df = self._filter_data(df)
 
-            self.processed_df = df
+            self.processed_df = self._reduce_precision(df)
 
             if save_output:
                 self._save_output()
