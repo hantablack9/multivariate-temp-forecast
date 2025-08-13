@@ -8,8 +8,11 @@
 
 This is a project to forecast temperature using a long-context deep-neural networks. This also contains analysis of different IoT sensor data which act as independent features for the target 'Temperature'. **Stack:** Python, Tensorflow, Keras, FastAPI, LSTM, Autoencoders, Docker
 
+Data Provenance: Keras Datasets, BCG Jena [Max Planck Institute for Biogeochemistry](https://www.bgc-jena.mpg.de/wetter/weather_data.html)
+
+
 - **Github repository**: <https://github.com/hantablack9/multivariate-temp-forecast/>
-- **Documentation** <https://hantablack9.github.io/multivariate-temp-forecast/>
+<!-- - **Documentation** <https://hantablack9.github.io/multivariate-temp-forecast/> -->
 
 ## Getting started with your project
 

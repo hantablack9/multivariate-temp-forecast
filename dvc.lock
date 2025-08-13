@@ -1,0 +1,61 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python src/pipelines/01_preprocess.py --config=params.yaml
+    deps:
+    - path: src/multivariate_temp_forecast/data_etl.py
+      hash: md5
+      md5: ee0795220a806bb608a96c88be3376ec
+      size: 23600
+    - path: src/multivariate_temp_forecast/logger_factory.py
+      hash: md5
+      md5: 75ae376fe4870e211b74e363a8ea979c
+      size: 12865
+    - path: src/pipelines/01_preprocess.py
+      hash: md5
+      md5: d078e40843de437c9321a593cb47de04
+      size: 1432
+    params:
+      params.yaml:
+        preprocess:
+          impute: true
+          resample: true
+          filter_years: false
+          imputation_method: seasonal
+          resample_method: mean
+          sampling_rate: 1h
+          filter_range:
+          - 2014
+          - 2016
+          fix_data_errors: true
+          encode_sinusoidal: true
+          cyclic_cols:
+          - wd
+          anomaly_cols:
+          - wv
+          - max__wv
+    outs:
+    - path: data/preprocessed/preprocessed.csv
+      hash: md5
+      md5: 073c67a5ef969a8c76383940d12f8ca4
+      size: 11833130
+  download_data:
+    cmd: python src/pipelines/00_download_data.py
+    deps:
+    - path: src/multivariate_temp_forecast/data_etl.py
+      hash: md5
+      md5: 97b93a3091e0bec11e8f9453410a880f
+      size: 22525
+    - path: src/multivariate_temp_forecast/logger_factory.py
+      hash: md5
+      md5: 75ae376fe4870e211b74e363a8ea979c
+      size: 12865
+    - path: src/pipelines/00_download_data.py
+      hash: md5
+      md5: 3c7f58ab795142bbb2471b593ab42bd5
+      size: 879
+    outs:
+    - path: data/raw/jena_climate_2009_2016.csv
+      hash: md5
+      md5: 959915f05bfafef18e471a97ae679535
+      size: 43164220

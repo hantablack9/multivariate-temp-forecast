@@ -1,29 +1,40 @@
 stages:
+  # --- NEW: Stage 1 - Data Acquisition ---
+  download_data:
+    cmd: python src/pipelines/00_download_data.py
+    deps:
+      - src/pipelines/00_download_data.py
+      - src/multivariate_temp_forecast/data_etl.py # It depends on the class definition
+      - src/multivariate_temp_forecast/logger_factory.py
+    outs:
+      - data/raw/jena_climate_2009_2016.csv
+
   preprocess:
     cmd: python src/pipelines/01_preprocess.py --config=params.yaml
     deps:
       - src/pipelines/01_preprocess.py
+      - src/multivariate_temp_forecast/logger_factory.py
       - src/multivariate_temp_forecast/data_etl.py
     params:
-      - data_etl
+      - preprocess # This tells DVC to track the 'preprocess' section of params.yaml
     outs:
-      - data/processed/preprocessed_data.csv
+      - data/preprocessed/preprocessed.csv
 
   feature_engineer:
     cmd: python src/pipelines/02_feature_engineering.py --config=params.yaml
     deps:
       - src/pipelines/02_feature_engineering.py
-      - data/processed/preprocessed_data.csv
+      - data/preprocessed/preprocessed_data.csv
     params:
       - feature_engineering
     outs:
-      - data/processed/final_features.csv
+      - data/preprocessed/final_features.csv
 
   train:
     cmd: python src/pipelines/03_train_model.py --config=params.yaml
     deps:
       - src/pipelines/03_train_model.py
-      - data/processed/final_features.csv
+      - data/preprocessed/final_features.csv
     params:
       - train
     outs:
@@ -34,7 +45,7 @@ stages:
     deps:
       - src/pipelines/04_evaluate_model.py
       - models/model.h5
-      - data/processed/final_features.csv
+      - data/preprocessed/final_features.csv
     metrics:
       - reports/metrics.json:
           cache: false

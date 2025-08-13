@@ -2,6 +2,7 @@
   "cSpell.words": [
     "arithmatex",
     "Autoencoders",
+    "dayofyear",
     "deptry",
     "fontawesome",
     "Hanish",
@@ -19,6 +20,7 @@
     "mylog",
     "mypy",
     "numpy",
+    "ONEDNN",
     "Paturi",
     "pycodestyle",
     "pyflakes",
@@ -32,11 +34,17 @@
     "scikit",
     "seaborn",
     "shap",
+    "tdew",
     "testpaths",
-    "tryceratops"
+    "tpot",
+    "tryceratops",
+    "vpact",
+    "vpdef",
+    "vpmax"
   ],
   "taipyStudio.gUI.elementsFilePaths": [],
   "python.linting.pylintArgs": [
-        "--max-line-length=120",
+        "--max-line-length=140",
     ],
+    "window.zoomLevel": 0
 }
