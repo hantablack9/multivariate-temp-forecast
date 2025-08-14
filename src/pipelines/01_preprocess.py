@@ -40,6 +40,8 @@ with open("params.yaml", encoding="utf-8") as f:
 etl_processor = DataETL(**params["preprocess"])
 
 # 3. Run the pipeline
+
+
 etl_processor.run(save_output=True)
 
 print("Preprocessing stage complete.")

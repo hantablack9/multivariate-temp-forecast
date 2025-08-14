@@ -1,21 +1,31 @@
-data_etl:
-  imputation_method: seasonal
-  resample_method: mean
-  sampling_rate: '1H'
-  filter_years: True
-  filter_range: [2014, 2016]
-
 preprocess:
+  impute: True
+  resample: True  
+  filter_years: False
   imputation_method: seasonal
   resample_method: mean
-  sampling_rate: '1H'
-  filter_years: True
-  filter_range: [2014, 2016]
-  
+  sampling_rate: '1h'
+  filter_range: 
+    - 2014
+    - 2016
+  fix_data_errors: True
+  encode_sinusoidal: True
+  cyclic_cols:  
+    - "wd"
+  anomaly_cols: 
+    - "wv"
+    - "max__wv"
 
 feature_engineering:
+  window_size: 5
+  train_test_split: 0.75
+  test_eval_split: 0.50
   scaler: standard_scaler
-  k_best_features: 10
+  period: '1d'
+  drop_features: 
+    - 'wd_deg'
+    - 'wv_ms'
+    - 'max_wv_ms'
 
 train:
   model_type: LSTM

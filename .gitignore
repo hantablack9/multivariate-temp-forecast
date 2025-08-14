@@ -27,11 +27,19 @@ ENV/
 .mypy_cache/
 mlruns/
 
+
 # --- Data Files (Tracked by DVC) ---
 # Ignore all data directories. DVC will handle them.
 /data/
 /models/
 /reports/
+
+# DVC GDRIVE CLIENT SECRETS
+client_secret_217295294462-v8m86lq0vo2vafn23a9a93jl78q72pcq.apps.googleusercontent.com.json
+client_secrets.json
+get_creds.py
+mycreds.json
+default.json
 
 # --- Other standard ignores ---
 .venv/

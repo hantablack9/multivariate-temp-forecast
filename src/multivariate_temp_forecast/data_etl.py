@@ -194,6 +194,9 @@ class DataETL:
     def _validate_parameters(self):
         """Private method to validate configuration parameters."""
         self.logger.log("Validating configuration parameters.", tag=["validation", "info"])
+        os.makedirs(self.RAW_DATA_DIR, exist_ok=True)
+        os.makedirs(self.PREPROCESSED_CSV_DIR, exist_ok=True)
+        
 
         if not self.impute and (self.resample or self.filter_years):
             error_msg = "Invalid request: Imputation is mandatory for resampling or filtering."

@@ -40,7 +40,8 @@
     "tryceratops",
     "vpact",
     "vpdef",
-    "vpmax"
+    "vpmax",
+    "windower"
   ],
   "taipyStudio.gUI.elementsFilePaths": [],
   "python.linting.pylintArgs": [
