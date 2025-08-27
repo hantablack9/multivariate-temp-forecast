@@ -5,7 +5,7 @@ Provides a Loguru-compatible sink for writing logs and methods for querying,
 analyzing, and exporting them.
 
 Author: Hanish Paturi
-Date: 2024-06-20
+Date: 2025-Aug-28
 """
 
 import csv
